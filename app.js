@@ -298,19 +298,19 @@ function renderActiveSession(c) {
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:24px">
       <div style="flex:1;text-align:center">
         <div class="score-team">${escHtml(t1p1)}<br>& ${escHtml(t1p2)}</div>
-        <div class="score-num" style="display:flex;align-items:center;justify-content:center;gap:12px; margin-top:16px;">
-          <button class="btn btn-icon btn-ghost" onclick="changeScore(1,-1)" style="width:38px;height:38px;font-size:1.4rem; background:var(--bg-input)">−</button>
-          <div id="score1" style="font-size:3.5rem;font-weight:900;width:50px;line-height:1;color:var(--text-primary)">0</div>
-          <button class="btn btn-icon btn-ghost" onclick="changeScore(1,1)" style="width:38px;height:38px;font-size:1.4rem;color:var(--green); background:var(--bg-input)">+</button>
+        <div class="score-num" style="display:flex;align-items:center;justify-content:center;gap:6px; margin-top:12px;">
+          <button class="btn btn-icon btn-ghost" onclick="changeScore(1,-1)" style="width:32px;height:32px;font-size:1.3rem; background:var(--bg-input)">−</button>
+          <div id="score1" style="font-size:2.8rem;font-weight:900;width:40px;line-height:1;color:var(--text-primary)">0</div>
+          <button class="btn btn-icon btn-ghost" onclick="changeScore(1,1)" style="width:32px;height:32px;font-size:1.3rem;color:var(--green); background:var(--bg-input)">+</button>
         </div>
       </div>
-      <div class="score-vs" style="margin:0 10px; opacity:0.5;">VS</div>
+      <div class="score-vs" style="margin:0 4px; opacity:0.5; font-size:0.8rem;">VS</div>
       <div style="flex:1;text-align:center">
         <div class="score-team">${escHtml(t2p1)}<br>& ${escHtml(t2p2)}</div>
-        <div class="score-num" style="display:flex;align-items:center;justify-content:center;gap:12px; margin-top:16px;">
-          <button class="btn btn-icon btn-ghost" onclick="changeScore(2,-1)" style="width:38px;height:38px;font-size:1.4rem; background:var(--bg-input)">−</button>
-          <div id="score2" style="font-size:3.5rem;font-weight:900;width:50px;line-height:1;color:var(--text-primary)">0</div>
-          <button class="btn btn-icon btn-ghost" onclick="changeScore(2,1)" style="width:38px;height:38px;font-size:1.4rem;color:var(--green); background:var(--bg-input)">+</button>
+        <div class="score-num" style="display:flex;align-items:center;justify-content:center;gap:6px; margin-top:12px;">
+          <button class="btn btn-icon btn-ghost" onclick="changeScore(2,-1)" style="width:32px;height:32px;font-size:1.3rem; background:var(--bg-input)">−</button>
+          <div id="score2" style="font-size:2.8rem;font-weight:900;width:40px;line-height:1;color:var(--text-primary)">0</div>
+          <button class="btn btn-icon btn-ghost" onclick="changeScore(2,1)" style="width:32px;height:32px;font-size:1.3rem;color:var(--green); background:var(--bg-input)">+</button>
         </div>
       </div>
     </div>
@@ -346,22 +346,9 @@ function renderActiveSession(c) {
 function renderPlayCountBar(s) {
   const counts={}; for (const id of s.attendees) counts[id]=0;
   for (const m of s.matches) { if(!m.skipped) { for (const id of [...m.team1,...m.team2]) counts[id]++; } }
-  
-  const items = s.attendees.map(id => {
-    const p = playerById(id); const n = counts[id];
-    let ringColor = 'transparent';
-    if(s.matches.length>0) {
-      const min = Math.min(...Object.values(counts));
-      if (n === min) ringColor = 'rgba(16,185,129,0.8)'; // Resaltar a los que jugaron menos (próximos)
-    }
-    return `<div style="position:relative; display:flex; flex-direction:column; align-items:center;">
-      <div style="width:40px; height:40px; border-radius:50%; background:${p?.color||'#000'}; display:flex; align-items:center; justify-content:center; color:white; font-size:0.85rem; font-weight:800; border: 2px solid ${ringColor}; box-shadow:0 2px 6px rgba(0,0,0,0.15);">${initials(p?.name)}</div>
-      <div style="position:absolute; top:-4px; right:-6px; background:var(--text-primary); color:var(--bg-card); font-size:0.65rem; font-weight:900; width:18px; height:18px; border-radius:50%; display:flex; align-items:center; justify-content:center; border:2px solid var(--bg-card); box-shadow:0 1px 3px rgba(0,0,0,0.2)">${n}</div>
-      <span style="font-size:0.55rem; color:var(--text-secondary); margin-top:6px; width:48px; text-align:center; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; text-transform:uppercase; font-weight:700;">${escHtml(p?.name)}</span>
-    </div>`;
-  }).join('');
-
-  return `<div class="card" style="padding:16px;"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;"><p class="section-title" style="margin:0; font-size:0.75rem;">Rotación actual</p><span style="font-size:0.65rem;color:var(--text-muted)">(Partidos Jugados)</span></div><div style="display:flex; flex-wrap:wrap; gap:16px 12px; justify-content:flex-start;">${items}</div></div>`;
+  const max=Math.max(...Object.values(counts),1);
+  const items=s.attendees.map(id=>{const p=playerById(id);const n=counts[id];return`<div style="display:flex;align-items:center;gap:8px"><div style="width:28px;height:28px;border-radius:50%;background:${p?.color};display:flex;align-items:center;justify-content:center;font-size:0.65rem;font-weight:800;color:#fff;flex-shrink:0">${initials(p?.name||'?')}</div><div style="flex:1;min-width:0"><div style="font-size:0.75rem;font-weight:600;color:var(--text-secondary);margin-bottom:3px">${escHtml(p?.name||'?')} <span style="color:var(--accent-bright)">${n}</span></div><div class="progress-wrap"><div class="progress-bar" style="width:${Math.round((n/max)*100)}%"></div></div></div></div>`;}).join('');
+  return `<div class="card"><p class="section-title" style="margin-bottom:10px">Partidos jugados</p><div class="gap-8" style="max-height: 200px; overflow-y: auto; padding-right: 6px;">${items}</div></div>`;
 }
 
 function changeScore(team,delta) {
