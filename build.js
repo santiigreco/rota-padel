@@ -5,7 +5,7 @@
  * Lee la env var SHEETS_API_URL y genera config.js
  * para que el frontend pueda leerla desde window.APP_CONFIG.
  */
-const fs   = require('fs');
+const fs = require('fs');
 const path = require('path');
 
 const apiUrl = process.env.SHEETS_API_URL || '';
