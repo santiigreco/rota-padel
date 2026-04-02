@@ -1,0 +1,538 @@
+'use strict';
+
+// ═══ CONFIG ══════════════════════════════════════════════════════════
+function getApiUrl() { return (window.APP_CONFIG && window.APP_CONFIG.apiUrl) || ''; }
+
+// ═══ API LAYER ═══════════════════════════════════════════════════════
+const API = {
+  async request(action, params = {}) {
+    const base = getApiUrl();
+    if (!base) throw new Error('API no configurada. Revisa config.js');
+    const qs = new URLSearchParams({ action });
+    Object.entries(params).forEach(([k, v]) => qs.set(k, v));
+    const res = await fetch(`${base}?${qs}`, { cache: 'no-cache' });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const json = await res.json();
+    if (!json.ok) throw new Error(json.error || 'Error API');
+    return json.data;
+  },
+  async getAll()         { return this.request('getAll'); },
+  async savePlayer(p)    { return this.request('savePlayer',   { data: encodeURIComponent(JSON.stringify(p)) }); },
+  async deletePlayer(id) { return this.request('deletePlayer', { id }); },
+  async saveJornada(j)   { return this.request('saveJornada',  { data: encodeURIComponent(JSON.stringify(j)) }); },
+  async savePartido(p)   { return this.request('savePartido',  { data: encodeURIComponent(JSON.stringify(p)) }); },
+};
+
+// ═══ CACHE (localStorage como respaldo offline) ═══════════════════════
+const CACHE = {
+  get(k, d = null) { try { const v = localStorage.getItem(k); return v ? JSON.parse(v) : d; } catch { return d; } },
+  set(k, v)        { try { localStorage.setItem(k, JSON.stringify(v)); } catch {} },
+  del(k)           { try { localStorage.removeItem(k); } catch {} },
+};
+const CK = { PLAYERS: 'rp_players', HISTORY: 'rp_history', SESSION: 'rp_session' };
+
+// ═══ STATE ════════════════════════════════════════════════════════════
+let state = { currentTab: 'play', players: [], history: [], session: null, syncStatus: 'idle' };
+
+// ═══ UTILS ════════════════════════════════════════════════════════════
+const COLORS = ['#3b82f6','#10b981','#f59e0b','#ef4444','#8b5cf6','#06b6d4','#f97316','#ec4899','#14b8a6','#84cc16','#a855f7','#0ea5e9'];
+function colorFor(i)    { return COLORS[i % COLORS.length]; }
+function initials(n)    { return (n||'?').trim().split(/\s+/).slice(0,2).map(w=>w[0]?.toUpperCase()||'').join(''); }
+function uid()          { return Date.now().toString(36) + Math.random().toString(36).slice(2,7); }
+function playerById(id) { return state.players.find(p => p.id === id); }
+function escHtml(s)     { return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;'); }
+
+// ═══ SYNC STATUS ══════════════════════════════════════════════════════
+function setSyncStatus(s) {
+  state.syncStatus = s;
+  const el = document.getElementById('sync-indicator'); if (!el) return;
+  const M = { idle:{cls:'sync-idle',txt:'☁️',t:'Sincronizado'}, syncing:{cls:'sync-syncing',txt:'↻',t:'Sincronizando…'}, error:{cls:'sync-error',txt:'⚠️',t:'Error de sync'}, offline:{cls:'sync-offline',txt:'📵',t:'Sin conexión'} };
+  const c = M[s]||M.idle; el.className=`sync-indicator ${c.cls}`; el.title=c.t; el.textContent=c.txt;
+}
+
+// ═══ LOADING OVERLAY ══════════════════════════════════════════════════
+function showLoading(txt) { const ov=document.getElementById('loading-overlay'); const tx=document.getElementById('loading-text'); if(ov) ov.classList.remove('hidden'); if(tx&&txt) tx.textContent=txt; }
+function hideLoading()    { const ov=document.getElementById('loading-overlay'); if(ov) ov.classList.add('hidden'); }
+
+// ═══ TOAST ════════════════════════════════════════════════════════════
+let _tt = null;
+function showToast(msg, ms=2500) { const el=document.getElementById('toast'); if(!el) return; el.textContent=msg; el.classList.remove('hidden'); clearTimeout(_tt); _tt=setTimeout(()=>el.classList.add('hidden'),ms); }
+
+// ═══ MODAL ════════════════════════════════════════════════════════════
+function openModal(html) { document.getElementById('modal-inner').innerHTML=html; document.getElementById('modal-overlay').classList.remove('hidden'); }
+function closeModal()    { document.getElementById('modal-overlay').classList.add('hidden'); }
+
+// ═══ DATA TRANSFORMATION (API → app state) ════════════════════════════
+function transformApiData({ jugadores=[], jornadas=[], partidos=[] }) {
+  const players = jugadores.map(j=>({ id:String(j.id), name:String(j.nombre), color:String(j.color||'#3b82f6') }));
+  const history = jornadas.map(j=>{
+    let att=[]; try{ att=typeof j.attendees==='string'?JSON.parse(j.attendees):(j.attendees||[]); }catch{}
+    return {
+      id:String(j.id), date:String(j.fecha), gamesFormat:parseInt(j.games_format)||4,
+      attendees:att.map(String),
+      matches:partidos.filter(p=>String(p.id_jornada)===String(j.id)).map(p=>({
+        id:String(p.id), team1:[String(p.team1_p1),String(p.team1_p2)], team2:[String(p.team2_p1),String(p.team2_p2)],
+        score1:parseInt(p.score1)||0, score2:parseInt(p.score2)||0,
+        skipped:p.skipped===true||String(p.skipped).toUpperCase()==='TRUE',
+        matchIndex:parseInt(p.match_index)||0,
+      })),
+    };
+  });
+  return { players, history };
+}
+
+// ═══ LOAD STATE ════════════════════════════════════════════════════════
+async function loadState() {
+  state.session = CACHE.get(CK.SESSION, null);
+  if (!getApiUrl()) {
+    state.players = CACHE.get(CK.PLAYERS, []);
+    state.history  = CACHE.get(CK.HISTORY, []);
+    setSyncStatus('offline');
+    showToast('⚠️ Modo local — configura config.js para Google Sheets', 5000);
+    return;
+  }
+  try {
+    setSyncStatus('syncing');
+    const { players, history } = transformApiData(await API.getAll());
+    state.players = players; state.history = history;
+    CACHE.set(CK.PLAYERS, players); CACHE.set(CK.HISTORY, history);
+    setSyncStatus('idle');
+  } catch(err) {
+    console.warn('API no disponible:', err.message);
+    state.players = CACHE.get(CK.PLAYERS, []);
+    state.history  = CACHE.get(CK.HISTORY, []);
+    setSyncStatus(navigator.onLine ? 'error' : 'offline');
+    showToast('📵 Sin conexión — usando datos locales', 3500);
+  }
+}
+
+// ═══ SYNC WRAPPER ══════════════════════════════════════════════════════
+async function withSync(fn) {
+  setSyncStatus('syncing');
+  try { const result=await fn(); setSyncStatus('idle'); return {ok:true,result}; }
+  catch(err) { setSyncStatus(navigator.onLine?'error':'offline'); showToast(`⚠️ Error: ${err.message}`,4000); return {ok:false,error:err}; }
+}
+
+// ═══ NAVIGATION ════════════════════════════════════════════════════════
+function navigate(tab) {
+  state.currentTab = tab;
+  document.querySelectorAll('.nav-btn').forEach(b=>b.classList.toggle('active',b.dataset.tab===tab));
+  renderPage();
+}
+
+// ═══ HEADER ════════════════════════════════════════════════════════════
+function updateHeader() {
+  const actions=document.getElementById('header-actions'); actions.innerHTML='';
+  const title=document.getElementById('header-title');
+  if (state.currentTab==='play') {
+    title.textContent='RotaPádel';
+    const rld=document.createElement('button'); rld.className='btn btn-sm btn-ghost btn-icon'; rld.innerHTML='🔄'; rld.title='Recargar desde Sheets'; rld.style.cssText='padding:7px 9px;font-size:0.9rem;'; rld.onclick=reloadFromApi; actions.appendChild(rld);
+    if (state.session&&!state.session.finished) { const btn=document.createElement('button'); btn.className='btn btn-sm btn-red'; btn.innerHTML='✕ Jornada'; btn.style.cssText='font-size:0.75rem;padding:7px 10px;'; btn.onclick=confirmCancelSession; actions.appendChild(btn); }
+  } else if (state.currentTab==='players') {
+    title.textContent='Jugadores';
+    const btn=document.createElement('button'); btn.className='btn btn-sm btn-primary'; btn.innerHTML='+ Añadir'; btn.style.cssText='font-size:0.82rem;padding:8px 12px;'; btn.onclick=openAddPlayerModal; actions.appendChild(btn);
+  } else { title.textContent='Estadísticas'; }
+}
+
+async function reloadFromApi() {
+  showLoading('Actualizando…'); await loadState(); hideLoading(); renderPage();
+  if (state.syncStatus==='idle') showToast('✅ Datos actualizados');
+}
+
+// ═══ RENDER DISPATCHER ═════════════════════════════════════════════════
+function renderPage() {
+  const c=document.getElementById('page-container'); c.innerHTML='';
+  const p=document.createElement('div'); p.className='page';
+  if      (state.currentTab==='play')    renderPlayPage(p);
+  else if (state.currentTab==='players') renderPlayersPage(p);
+  else                                   renderStatsPage(p);
+  c.appendChild(p); updateHeader();
+}
+
+// ═══ PLAY PAGE ═════════════════════════════════════════════════════════
+function renderPlayPage(page) {
+  page.innerHTML='<div class="page-padding gap-12"></div>';
+  const c=page.querySelector('.gap-12');
+  if (state.syncStatus==='error'||state.syncStatus==='offline') {
+    c.innerHTML+=`<div class="sync-banner"><span class="sync-banner-icon">📵</span><span class="sync-banner-text">Sin conexión — datos locales</span><button class="sync-banner-btn" onclick="reloadFromApi()">Reintentar</button></div>`;
+  }
+  if      (!state.session)         renderNoSession(c);
+  else if (state.session.finished) renderSessionEnd(c);
+  else                             renderActiveSession(c);
+}
+
+function renderNoSession(c) {
+  c.innerHTML+=`
+    <div class="no-session">
+      <div class="no-session-icon">🎾</div>
+      <h2 class="no-session-title">¡A jugar!</h2>
+      <p class="no-session-sub">Selecciona los jugadores de hoy para generar los turnos automáticamente.</p>
+      <button class="btn btn-primary btn-full" onclick="startSetupFlow()" style="max-width:320px;margin:0 auto">⚡ Iniciar Jornada</button>
+    </div>`;
+  if (state.history.length>0) {
+    const last=state.history[state.history.length-1];
+    const date=new Date(last.date).toLocaleDateString('es-ES',{weekday:'long',day:'numeric',month:'long'});
+    const names=last.attendees.map(id=>playerById(id)?.name||'?').join(', ');
+    c.innerHTML+=`<p class="section-title">Última Jornada</p><div class="card"><div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px"><div><div style="font-size:0.85rem;font-weight:700;text-transform:capitalize">${date}</div><div style="font-size:0.78rem;color:var(--text-muted);margin-top:2px">${last.matches.length} partidos · ${last.attendees.length} jugadores</div><div style="font-size:0.78rem;color:var(--text-secondary);margin-top:4px">${names}</div></div><span class="badge badge-green">✓ Terminada</span></div></div>`;
+  }
+}
+
+// ═══ SETUP FLOW ════════════════════════════════════════════════════════
+function startSetupFlow() {
+  if (state.players.length<4) { showToast('⚠️ Necesitas al menos 4 jugadores'); return; }
+  openAttendanceModal();
+}
+
+function openAttendanceModal() {
+  openModal(`
+    <div class="modal-handle"></div>
+    <p class="modal-title">👥 ¿Quién viene hoy?</p>
+    <p style="font-size:0.82rem;color:var(--text-muted);margin-bottom:16px">Selecciona entre 4 y 8 jugadores</p>
+    <div id="attendance-list" class="gap-8" style="margin-bottom:16px">
+      ${state.players.map(p=>`<div class="check-item" id="chk-${p.id}" onclick="toggleAttendee('${p.id}')"><div class="check-box" id="chkbox-${p.id}"></div><div class="player-avatar" style="background:${p.color}">${initials(p.name)}</div><span class="check-name">${escHtml(p.name)}</span></div>`).join('')}
+    </div>
+    <div id="attend-msg" style="font-size:0.82rem;color:var(--amber);margin-bottom:10px;min-height:18px"></div>
+    <button class="btn btn-primary btn-full" onclick="proceedToConfig()" id="btn-proceed-config" disabled style="opacity:0.5">⚙️ Configurar Formato</button>`);
+  window._attendees=new Set(); updateAttendanceBtn();
+}
+
+function toggleAttendee(id) {
+  if (!window._attendees) window._attendees=new Set();
+  if (window._attendees.has(id)) { window._attendees.delete(id); document.getElementById('chk-'+id)?.classList.remove('selected'); document.getElementById('chkbox-'+id).textContent=''; }
+  else { window._attendees.add(id); document.getElementById('chk-'+id)?.classList.add('selected'); document.getElementById('chkbox-'+id).textContent='✓'; }
+  updateAttendanceBtn();
+}
+
+function updateAttendanceBtn() {
+  const n=window._attendees?.size||0; const msg=document.getElementById('attend-msg'); const btn=document.getElementById('btn-proceed-config');
+  if (!msg||!btn) return;
+  if (n<4) { msg.style.color='var(--amber)'; msg.textContent=`Selecciona ${4-n} más`; btn.disabled=true; btn.style.opacity='0.5'; }
+  else if (n>8) { msg.style.color='var(--red)'; msg.textContent='Máximo 8 jugadores'; btn.disabled=true; btn.style.opacity='0.5'; }
+  else { msg.style.color='var(--green)'; msg.textContent=`✓ ${n} jugadores seleccionados`; btn.disabled=false; btn.style.opacity='1'; }
+}
+
+function proceedToConfig() {
+  const attendees=[...window._attendees]; if (attendees.length<4||attendees.length>8) return;
+  openModal(`
+    <div class="modal-handle"></div>
+    <p class="modal-title">⚙️ Formato de Partido</p>
+    <div class="gap-12">
+      <div class="input-group">
+        <label class="input-label">Jugar al mejor de <span id="games-val">4</span> games</label>
+        <input type="range" id="games-range" min="2" max="8" value="4" step="1" oninput="updateGamesRange(this.value)" style="margin-top:8px"/>
+        <div style="display:flex;justify-content:space-between;font-size:0.72rem;color:var(--text-muted);margin-top:4px"><span>2</span><span>4</span><span>6</span><span>8</span></div>
+      </div>
+      <div class="card" style="background:rgba(59,130,246,0.06);border-color:rgba(59,130,246,0.2)">
+        <p style="font-size:0.82rem;color:var(--text-secondary)">🔄 Rotaciones automáticas para <strong style="color:var(--text-primary)">${attendees.length} jugadores</strong>. Equidad garantizada.</p>
+      </div>
+      <button class="btn btn-green btn-full" onclick="launchSession(${JSON.stringify(attendees).replace(/"/g,"'")})">🚀 ¡Iniciar Jornada!</button>
+    </div>`);
+  setTimeout(()=>updateGamesRange(4),50);
+}
+
+function updateGamesRange(val) {
+  const v=parseInt(val); const el=document.getElementById('games-val'); if(el) el.textContent=v;
+  const r=document.getElementById('games-range'); if(r){ const pct=((v-2)/(8-2))*100; r.style.background=`linear-gradient(to right,var(--accent) 0%,var(--accent) ${pct}%,var(--border) ${pct}%)`; }
+}
+
+function launchSession(attendees) {
+  const fmt=parseInt(document.getElementById('games-range')?.value)||4;
+  const sh=[...attendees].sort(()=>Math.random()-0.5);
+  state.session={id:uid(),date:new Date().toISOString(),attendees,gamesFormat:fmt,matches:[],currentMatch:{id:uid(),team1:[sh[0],sh[1]],team2:[sh[2],sh[3]]},matchIndex:1,finished:false};
+  CACHE.set(CK.SESSION,state.session); closeModal(); renderPage(); showToast('🎾 ¡Jornada iniciada!');
+}
+
+// ═══ ACTIVE SESSION ════════════════════════════════════════════════════
+function renderActiveSession(c) {
+  const s=state.session; const m=s.currentMatch; const pn=id=>playerById(id)?.name||'?';
+  const resting=s.attendees.filter(id=>!m.team1.includes(id)&&!m.team2.includes(id));
+  c.innerHTML+=`
+    <div class="session-banner">
+      <div class="session-banner-info"><div class="session-banner-title">🟢 Jornada en curso</div><div class="session-banner-sub">${s.attendees.length} jugadores · Mejor de ${s.gamesFormat} games</div></div>
+      <div style="text-align:right"><div style="font-size:1.5rem;font-weight:900;color:var(--accent-bright)">${s.matches.length}</div><div style="font-size:0.65rem;color:var(--text-muted);font-weight:700;text-transform:uppercase">Partidos</div></div>
+    </div>`;
+  c.innerHTML+=renderPlayCountBar(s);
+  const mc=document.createElement('div');
+  mc.innerHTML=`
+    <div class="match-number">🎾 Partido #${s.matchIndex}</div>
+    <div class="match-card">
+      <div class="vs-row">
+        <div class="team-col"><div class="team-label">Pareja 1</div><div class="team-player"><span>${escHtml(pn(m.team1[0]))}</span></div><div class="team-player"><span>${escHtml(pn(m.team1[1]))}</span></div></div>
+        <div class="vs-text">VS</div>
+        <div class="team-col right"><div class="team-label" style="text-align:right">Pareja 2</div><div class="team-player"><span>${escHtml(pn(m.team2[0]))}</span></div><div class="team-player"><span>${escHtml(pn(m.team2[1]))}</span></div></div>
+      </div>
+      ${resting.length>0?`<div class="resting-bar"><span class="resting-label">⏸ Descansan</span><span class="resting-names">${resting.map(id=>pn(id)).join(' · ')}</span></div>`:''}
+    </div>`;
+  c.appendChild(mc);
+  const sc=document.createElement('div'); sc.className='card';
+  sc.innerHTML=`
+    <p class="section-title" style="margin-bottom:14px">📝 Resultado</p>
+    <div class="score-row">
+      <div><div class="score-team">${escHtml(pn(m.team1[0]))} & ${escHtml(pn(m.team1[1]))}</div><div class="score-num"><button class="btn btn-icon" onclick="changeScore(1,-1)">−</button><div class="score-val" id="score1">0</div><button class="btn btn-icon" onclick="changeScore(1,1)">+</button></div></div>
+      <div class="score-vs">VS</div>
+      <div><div class="score-team">${escHtml(pn(m.team2[0]))} & ${escHtml(pn(m.team2[1]))}</div><div class="score-num"><button class="btn btn-icon" onclick="changeScore(2,-1)">−</button><div class="score-val" id="score2">0</div><button class="btn btn-icon" onclick="changeScore(2,1)">+</button></div></div>
+    </div>`;
+  c.appendChild(sc);
+  const acts=document.createElement('div'); acts.className='gap-8';
+  acts.innerHTML=`
+    <button class="btn btn-green btn-full" id="btn-save-match" onclick="saveMatchResult()">💾 Guardar y Siguiente Partido</button>
+    <button class="btn btn-ghost btn-full" onclick="skipMatch()" style="font-size:0.85rem">⏭ Saltar (sin resultado)</button>
+    <button class="btn btn-ghost btn-full" onclick="promptFinishSession()" style="font-size:0.85rem;color:var(--amber)">🏁 Terminar Jornada</button>`;
+  c.appendChild(acts);
+  window._score1=0; window._score2=0;
+}
+
+function renderPlayCountBar(s) {
+  const counts={}; for (const id of s.attendees) counts[id]=0;
+  for (const m of s.matches) for (const id of [...m.team1,...m.team2]) counts[id]++;
+  const max=Math.max(...Object.values(counts),1);
+  const items=s.attendees.map(id=>{const p=playerById(id);const n=counts[id];return`<div style="display:flex;align-items:center;gap:8px"><div style="width:28px;height:28px;border-radius:50%;background:${p?.color};display:flex;align-items:center;justify-content:center;font-size:0.65rem;font-weight:800;color:#fff;flex-shrink:0">${initials(p?.name||'?')}</div><div style="flex:1;min-width:0"><div style="font-size:0.75rem;font-weight:600;color:var(--text-secondary);margin-bottom:3px">${escHtml(p?.name||'?')} <span style="color:var(--accent-bright)">${n}</span></div><div class="progress-wrap"><div class="progress-bar" style="width:${Math.round((n/max)*100)}%"></div></div></div></div>`;}).join('');
+  return `<div class="card"><p class="section-title" style="margin-bottom:10px">Partidos jugados</p><div class="gap-8">${items}</div></div>`;
+}
+
+function changeScore(team,delta) {
+  if(team===1){window._score1=Math.max(0,(window._score1||0)+delta);const el=document.getElementById('score1');if(el)el.textContent=window._score1;}
+  else{window._score2=Math.max(0,(window._score2||0)+delta);const el=document.getElementById('score2');if(el)el.textContent=window._score2;}
+}
+
+async function saveMatchResult() {
+  const s1=window._score1||0,s2=window._score2||0;
+  if(s1===0&&s2===0){showToast('⚠️ Ingresa al menos un resultado');return;}
+  const s=state.session; const m=s.currentMatch;
+  const btn=document.getElementById('btn-save-match');
+  if(btn){btn.disabled=true;btn.innerHTML='<span class="spinner-sm"></span> Guardando…';}
+  const partido={id:uid(),id_jornada:s.id,team1_p1:m.team1[0],team1_p2:m.team1[1],team2_p1:m.team2[0],team2_p2:m.team2[1],score1:s1,score2:s2,skipped:false,match_index:s.matchIndex,team1:m.team1,team2:m.team2};
+  s.matches.push(partido); s.currentMatch=generateNextMatch(s.attendees,s.matches); s.matchIndex++;
+  CACHE.set(CK.SESSION,s);
+  withSync(()=>API.savePartido(partido)); // fire-and-forget
+  renderPage(); showToast('✅ Partido guardado. ¡Al siguiente!');
+}
+
+async function skipMatch() {
+  const s=state.session; const m=s.currentMatch;
+  const partido={id:uid(),id_jornada:s.id,team1_p1:m.team1[0],team1_p2:m.team1[1],team2_p1:m.team2[0],team2_p2:m.team2[1],score1:0,score2:0,skipped:true,match_index:s.matchIndex,team1:m.team1,team2:m.team2};
+  s.matches.push(partido); s.currentMatch=generateNextMatch(s.attendees,s.matches); s.matchIndex++;
+  CACHE.set(CK.SESSION,s);
+  withSync(()=>API.savePartido(partido));
+  renderPage(); showToast('⏭ Partido saltado');
+}
+
+function promptFinishSession() {
+  openModal(`<div class="modal-handle"></div><p class="modal-title">🏁 ¿Terminar la jornada?</p><p style="font-size:0.9rem;color:var(--text-secondary);margin-bottom:20px">Se guardarán ${state.session.matches.length} partidos en Google Sheets.</p><div class="gap-8"><button class="btn btn-amber btn-full" id="btn-confirm-finish" onclick="finishSession()">🏆 Sí, terminar</button><button class="btn btn-ghost btn-full" onclick="closeModal()">Seguir jugando</button></div>`);
+}
+
+async function finishSession() {
+  const btn=document.getElementById('btn-confirm-finish');
+  if(btn){btn.disabled=true;btn.innerHTML='<span class="spinner-sm"></span> Guardando en Sheets…';}
+  const s=state.session;
+  setSyncStatus('syncing');
+  try { await API.saveJornada({id:s.id,fecha:s.date,games_format:s.gamesFormat,attendees:s.attendees,finished:true}); setSyncStatus('idle'); }
+  catch(err) { setSyncStatus('error'); showToast('⚠️ Error al guardar: '+err.message,4000); }
+  state.history.push({id:s.id,date:s.date,gamesFormat:s.gamesFormat,attendees:s.attendees,matches:s.matches});
+  CACHE.set(CK.HISTORY,state.history);
+  s.finished=true; CACHE.set(CK.SESSION,s);
+  closeModal(); renderPage(); showToast('🏆 ¡Jornada terminada!');
+}
+
+function renderSessionEnd(c) {
+  const s=state.session; const wonMap={};
+  for (const id of s.attendees) wonMap[id]=0;
+  for (const m of s.matches) {
+    if(m.score1>m.score2){wonMap[m.team1[0]]=(wonMap[m.team1[0]]||0)+1;wonMap[m.team1[1]]=(wonMap[m.team1[1]]||0)+1;}
+    else if(m.score2>m.score1){wonMap[m.team2[0]]=(wonMap[m.team2[0]]||0)+1;wonMap[m.team2[1]]=(wonMap[m.team2[1]]||0)+1;}
+  }
+  const sorted=s.attendees.slice().sort((a,b)=>(wonMap[b]||0)-(wonMap[a]||0));
+  const mvp=playerById(sorted[0]);
+  c.innerHTML=`
+    <div class="end-card"><div class="end-icon">🏆</div><div class="end-title">¡Jornada Terminada!</div><div class="end-sub">${s.matches.length} partidos · ${s.attendees.length} jugadores</div>${mvp?`<div class="badge badge-amber" style="margin:0 auto 16px;font-size:0.85rem;padding:6px 16px">👑 MVP: ${escHtml(mvp.name)} (${wonMap[sorted[0]]} victorias)</div>`:''}</div>
+    <div class="card"><p class="section-title" style="margin-bottom:12px">Resumen</p><div class="gap-8">${sorted.map((id,i)=>{const p=playerById(id);const medals=['🥇','🥈','🥉'];return`<div class="stat-row"><div class="stat-pos ${i===0?'gold':i===1?'silver':i===2?'bronze':''}">${medals[i]||i+1}</div><div class="stat-avatar" style="background:${p?.color}">${initials(p?.name||'?')}</div><div><div class="stat-name">${escHtml(p?.name||'?')}</div></div><div style="margin-left:auto;text-align:right"><div class="stat-val">${wonMap[id]||0}</div><div class="stat-unit">victorias</div></div></div>`;}).join('')}</div></div>
+    <div class="gap-8"><button class="btn btn-primary btn-full" onclick="clearSession();startSetupFlow()">⚡ Nueva Jornada</button><button class="btn btn-ghost btn-full" onclick="clearSession()" style="font-size:0.85rem">🗑 Limpiar</button></div>`;
+}
+
+function clearSession()         { state.session=null; CACHE.del(CK.SESSION); renderPage(); }
+function confirmCancelSession() {
+  openModal(`<div class="modal-handle"></div><p class="modal-title">⚠️ ¿Cancelar jornada?</p><p style="font-size:0.9rem;color:var(--text-secondary);margin-bottom:20px">Se perderán los datos no guardados.</p><div class="gap-8"><button class="btn btn-red btn-full" onclick="clearSession();closeModal()">🗑 Sí, cancelar</button><button class="btn btn-ghost btn-full" onclick="closeModal()">Volver</button></div>`);
+}
+
+// ═══ PLAYERS PAGE ══════════════════════════════════════════════════════
+function renderPlayersPage(page) {
+  const c=document.createElement('div'); c.className='page-padding gap-12';
+  if (state.players.length===0) {
+    c.innerHTML=`<div class="empty-state"><div class="empty-icon">👤</div><div class="empty-title">Sin jugadores todavía</div><div class="empty-sub">Añade jugadores para comenzar.</div><button class="btn btn-primary" onclick="openAddPlayerModal()" style="margin-top:8px">+ Añadir</button></div>`;
+  } else {
+    c.innerHTML=`<div style="display:flex;align-items:center;gap:8px"><span class="badge badge-blue">${state.players.length} jugadores</span>${state.players.length>=4?'<span class="badge badge-green">✓ Listo para jugar</span>':`<span class="badge badge-amber">Necesitas ${4-state.players.length} más</span>`}</div>`;
+    const list=document.createElement('div'); list.className='gap-8';
+    list.innerHTML=state.players.map(p=>renderPlayerItem(p)).join(''); c.appendChild(list);
+  }
+  page.appendChild(c);
+}
+
+function renderPlayerItem(p) {
+  const s=getPlayerStatsQuick(p.id);
+  return `<div class="player-item"><div class="player-avatar" style="background:${p.color}">${initials(p.name)}</div><div style="flex:1;min-width:0"><div class="player-name">${escHtml(p.name)}</div><div style="font-size:0.75rem;color:var(--text-muted);margin-top:2px">${s.matches} partidos · ${s.wins} victorias · ${s.sessions} jornadas</div></div><div class="player-actions"><button class="btn btn-icon btn-ghost btn-sm" onclick="openEditPlayerModal('${p.id}')">✏️</button><button class="btn btn-icon btn-ghost btn-sm" onclick="confirmDeletePlayer('${p.id}')">🗑</button></div></div>`;
+}
+
+function getPlayerStatsQuick(id) {
+  let matches=0,wins=0,sessions=0;
+  for (const session of state.history) {
+    if (!session.attendees.includes(id)) continue; sessions++;
+    for (const m of session.matches) {
+      const t1=m.team1.includes(id),t2=m.team2.includes(id); if(!t1&&!t2) continue;
+      matches++; if(t1&&m.score1>m.score2)wins++; if(t2&&m.score2>m.score1)wins++;
+    }
+  }
+  return {matches,wins,sessions};
+}
+
+function openAddPlayerModal() {
+  openModal(`<div class="modal-handle"></div><p class="modal-title">➕ Nuevo Jugador</p><div class="gap-12"><div class="input-group"><label class="input-label">Nombre</label><input class="input" type="text" id="new-player-name" placeholder="Ej: Carlos García" maxlength="30" onkeydown="if(event.key==='Enter')addPlayer()"/></div><button class="btn btn-primary btn-full" id="btn-add-player" onclick="addPlayer()">✓ Añadir</button><button class="btn btn-ghost btn-full" onclick="closeModal()">Cancelar</button></div>`);
+  setTimeout(()=>document.getElementById('new-player-name')?.focus(),100);
+}
+
+async function addPlayer() {
+  const input=document.getElementById('new-player-name'); const name=input?.value.trim();
+  if(!name){showToast('⚠️ Ingresa un nombre');return;}
+  if(state.players.some(p=>p.name.toLowerCase()===name.toLowerCase())){showToast('⚠️ Ya existe ese jugador');return;}
+  const btn=document.getElementById('btn-add-player'); if(btn){btn.disabled=true;btn.innerHTML='<span class="spinner-sm"></span> Guardando…';}
+  const player={id:uid(),name,color:colorFor(state.players.length)};
+  const {ok}=await withSync(()=>API.savePlayer(player));
+  if(ok){state.players.push(player);CACHE.set(CK.PLAYERS,state.players);closeModal();renderPage();showToast(`✅ ${name} añadido`);}
+  else if(btn){btn.disabled=false;btn.innerHTML='✓ Añadir';}
+}
+
+function openEditPlayerModal(id) {
+  const p=playerById(id); if(!p) return;
+  openModal(`<div class="modal-handle"></div><p class="modal-title">✏️ Editar Jugador</p><div class="gap-12"><div class="input-group"><label class="input-label">Nombre</label><input class="input" type="text" id="edit-player-name" value="${escHtml(p.name)}" maxlength="30" onkeydown="if(event.key==='Enter')editPlayer('${id}')"/></div><button class="btn btn-primary btn-full" id="btn-edit-player" onclick="editPlayer('${id}')">✓ Guardar</button><button class="btn btn-ghost btn-full" onclick="closeModal()">Cancelar</button></div>`);
+  setTimeout(()=>{const i=document.getElementById('edit-player-name');if(i){i.focus();i.select();}},100);
+}
+
+async function editPlayer(id) {
+  const name=document.getElementById('edit-player-name')?.value.trim(); if(!name){showToast('⚠️ Ingresa un nombre');return;}
+  const p=playerById(id); if(!p) return;
+  const btn=document.getElementById('btn-edit-player'); if(btn){btn.disabled=true;btn.innerHTML='<span class="spinner-sm"></span> Guardando…';}
+  const updated={...p,name};
+  const {ok}=await withSync(()=>API.savePlayer(updated));
+  if(ok){p.name=name;CACHE.set(CK.PLAYERS,state.players);closeModal();renderPage();showToast('✅ Nombre actualizado');}
+  else if(btn){btn.disabled=false;btn.innerHTML='✓ Guardar';}
+}
+
+function confirmDeletePlayer(id) {
+  const p=playerById(id);
+  openModal(`<div class="modal-handle"></div><p class="modal-title">🗑 Eliminar Jugador</p><p style="font-size:0.9rem;color:var(--text-secondary);margin-bottom:20px">¿Eliminar a <strong>${escHtml(p?.name||'?')}</strong>?</p><div class="gap-8"><button class="btn btn-red btn-full" id="btn-delete-player" onclick="deletePlayer('${id}')">🗑 Eliminar</button><button class="btn btn-ghost btn-full" onclick="closeModal()">Cancelar</button></div>`);
+}
+
+async function deletePlayer(id) {
+  const btn=document.getElementById('btn-delete-player'); if(btn){btn.disabled=true;btn.innerHTML='<span class="spinner-sm"></span> Eliminando…';}
+  const {ok}=await withSync(()=>API.deletePlayer(id));
+  if(ok){state.players=state.players.filter(p=>p.id!==id);CACHE.set(CK.PLAYERS,state.players);closeModal();renderPage();showToast('Jugador eliminado');}
+  else if(btn){btn.disabled=false;btn.innerHTML='🗑 Eliminar';}
+}
+
+// ═══ STATS PAGE ════════════════════════════════════════════════════════
+function renderStatsPage(page) {
+  const c=document.createElement('div'); c.className='page-padding gap-12';
+  if (state.history.length===0) {
+    c.innerHTML=`<div class="empty-state"><div class="empty-icon">📊</div><div class="empty-title">Sin datos todavía</div><div class="empty-sub">Completa tu primera jornada para ver estadísticas.</div></div>`;
+    page.appendChild(c); return;
+  }
+  const stats=computeGlobalStats(); const total=state.history.reduce((s,h)=>s+h.matches.length,0);
+  c.innerHTML=`
+    <div class="tab-selector"><button class="tab-opt active" onclick="switchStatTab('ranking',this)">🏆 Ranking</button><button class="tab-opt" onclick="switchStatTab('games',this)">🎾 Games</button><button class="tab-opt" onclick="switchStatTab('attend',this)">📅 Asistencia</button><button class="tab-opt" onclick="switchStatTab('pairs',this)">👥 Parejas</button></div>
+    <div class="hero-grid"><div class="hero-stat"><div class="icon">🗓</div><div class="value">${state.history.length}</div><div class="label">Jornadas</div></div><div class="hero-stat"><div class="icon">🎾</div><div class="value">${total}</div><div class="label">Partidos</div></div></div>`;
+  const tc=document.createElement('div'); tc.id='stats-tab-content'; c.appendChild(tc);
+  renderStatTab(tc,'ranking',stats); page.appendChild(c);
+}
+
+function switchStatTab(tab,btn) {
+  document.querySelectorAll('.tab-opt').forEach(b=>b.classList.remove('active')); btn.classList.add('active');
+  const c=document.getElementById('stats-tab-content'); if(c) renderStatTab(c,tab,computeGlobalStats());
+}
+
+function renderStatTab(c,tab,stats) {
+  c.innerHTML=''; c.className='gap-12';
+  if (tab==='ranking') {
+    const max=stats.ranking[0]?.wins||1;
+    c.innerHTML=`<p class="section-title">🏆 Ranking — Victorias</p><div class="card">${stats.ranking.map((r,i)=>`<div class="stat-row"><div class="stat-pos ${i===0?'gold':i===1?'silver':i===2?'bronze':''}">${i===0?'🥇':i===1?'🥈':i===2?'🥉':i+1}</div><div class="stat-avatar" style="background:${r.color}">${initials(r.name)}</div><div style="flex:1;min-width:0"><div class="stat-name">${escHtml(r.name)}</div><div class="stat-bar-wrap" style="max-width:120px"><div class="stat-bar" style="width:${Math.round((r.wins/max)*100)}%;background:linear-gradient(90deg,var(--accent),var(--cyan))"></div></div></div><div style="text-align:right"><div class="stat-val">${r.wins}</div><div class="stat-unit">${r.matches} partidos</div></div></div>`).join('')}</div>`;
+  } else if (tab==='games') {
+    const max=stats.gamesRanking[0]?.games||1;
+    c.innerHTML=`<p class="section-title">🎾 Games Ganados</p><div class="card">${stats.gamesRanking.map((r,i)=>`<div class="stat-row"><div class="stat-pos ${i===0?'gold':i===1?'silver':i===2?'bronze':''}">${i+1}</div><div class="stat-avatar" style="background:${r.color}">${initials(r.name)}</div><div style="flex:1;min-width:0"><div class="stat-name">${escHtml(r.name)}</div><div class="stat-bar-wrap" style="max-width:120px"><div class="stat-bar" style="width:${Math.round((r.games/max)*100)}%;background:linear-gradient(90deg,var(--green),var(--cyan))"></div></div></div><div style="text-align:right"><div class="stat-val">${r.games}</div><div class="stat-unit">games</div></div></div>`).join('')}</div>`;
+  } else if (tab==='attend') {
+    const max=stats.attendance[0]?.sessions||1;
+    c.innerHTML=`<p class="section-title">📅 Asistencia</p><div class="card">${stats.attendance.map((r,i)=>`<div class="stat-row"><div class="stat-pos">${i+1}</div><div class="stat-avatar" style="background:${r.color}">${initials(r.name)}</div><div style="flex:1;min-width:0"><div class="stat-name">${escHtml(r.name)}</div><div class="stat-bar-wrap" style="max-width:120px"><div class="stat-bar" style="width:${Math.round((r.sessions/max)*100)}%;background:linear-gradient(90deg,var(--amber),var(--red))"></div></div></div><div style="text-align:right"><div class="stat-val">${r.sessions}</div><div class="stat-unit">de ${state.history.length}</div></div></div>`).join('')}</div>`;
+  } else if (tab==='pairs') {
+    if (!stats.pairs.length){c.innerHTML='<div class="empty-state"><div class="empty-icon">👥</div><div class="empty-title">Sin datos de parejas</div></div>';return;}
+    c.innerHTML=`<p class="section-title">👥 Mejores Parejas</p>`+stats.pairs.slice(0,10).map((pair,i)=>`<div class="pair-card"><div style="display:flex;align-items:center;justify-content:space-between;gap:8px"><div class="pair-names">${escHtml(pair.names)}</div>${i===0?'<span class="badge badge-purple">🏆 Mejor Pareja</span>':''}</div><div class="pair-stats-row"><div class="pair-stat">Juntos: <strong>${pair.total}</strong></div><div class="pair-stat">Victorias: <strong>${pair.wins}</strong></div><div class="pair-stat">Win rate: <strong>${pair.total>0?Math.round((pair.wins/pair.total)*100):0}%</strong></div></div><div class="progress-wrap" style="margin-top:8px"><div class="progress-bar" style="width:${pair.total>0?Math.round((pair.wins/pair.total)*100):0}%;background:linear-gradient(90deg,var(--purple),var(--accent))"></div></div></div>`).join('');
+  }
+}
+
+function computeGlobalStats() {
+  const ps={},pairs={};
+  for (const session of state.history) {
+    for (const id of session.attendees) { if(!ps[id])ps[id]={wins:0,matches:0,games:0,sessions:0}; ps[id].sessions++; }
+    for (const m of session.matches) {
+      if(m.skipped) continue;
+      const t1w=m.score1>m.score2,t2w=m.score2>m.score1;
+      for (const id of m.team1){if(!ps[id])ps[id]={wins:0,matches:0,games:0,sessions:0};ps[id].matches++;if(t1w)ps[id].wins++;ps[id].games+=m.score1;}
+      for (const id of m.team2){if(!ps[id])ps[id]={wins:0,matches:0,games:0,sessions:0};ps[id].matches++;if(t2w)ps[id].wins++;ps[id].games+=m.score2;}
+      const proc=(team,won)=>{const[a,b]=[...team].sort();const key=a+'_'+b;if(!pairs[key]){const pa=playerById(a),pb=playerById(b);pairs[key]={wins:0,total:0,names:[pa?.name||'?',pb?.name||'?'].join(' & ')};}pairs[key].total++;if(won)pairs[key].wins++;};
+      proc(m.team1,t1w);proc(m.team2,t2w);
+    }
+  }
+  const ids=[...new Set([...state.players.map(p=>p.id),...Object.keys(ps)])];
+  const row=id=>{const p=playerById(id);const s=ps[id]||{wins:0,matches:0,games:0,sessions:0};return{id,name:p?.name||'(Eliminado)',color:p?.color||'#888',...s};};
+  return {
+    ranking:      ids.map(row).sort((a,b)=>b.wins-a.wins||b.matches-a.matches),
+    gamesRanking: ids.map(row).sort((a,b)=>b.games-a.games),
+    attendance:   ids.map(row).sort((a,b)=>b.sessions-a.sessions),
+    pairs:        Object.values(pairs).sort((a,b)=>b.wins-a.wins||b.total-a.total),
+  };
+}
+
+// ═══ ROTATION ALGORITHM ════════════════════════════════════════════════
+function generateNextMatch(attendees, played) {
+  const pc={},partC={},rivC={};
+  for (const id of attendees) pc[id]=0;
+  for (const m of played) {
+    for (const id of [...m.team1,...m.team2]) pc[id]=(pc[id]||0)+1;
+    for (const t of [m.team1,m.team2]){const k=[...t].sort().join('_');partC[k]=(partC[k]||0)+1;}
+    for (const a of m.team1) for (const b of m.team2){const k=[a,b].sort().join('_');rivC[k]=(rivC[k]||0)+1;}
+  }
+  let best=Infinity,match=null;
+  for (const g of combinations(attendees,4)) {
+    const rest=attendees.filter(id=>!g.includes(id));
+    const maxRest=rest.length>0?Math.max(...rest.map(id=>pc[id]||0)):0;
+    for (const [t1,t2] of getTeamSplits(g)) {
+      let score=0; const gpc=g.map(id=>pc[id]||0);
+      if(rest.length>0&&maxRest<Math.min(...gpc)) score+=1000*(Math.min(...gpc)-maxRest);
+      score+=gpc.reduce((s,c)=>s+c,0)*2;
+      score+=(partC[[...t1].sort().join('_')]||0)*40+(partC[[...t2].sort().join('_')]||0)*40;
+      for (const a of t1) for (const b of t2) score+=(rivC[[a,b].sort().join('_')]||0)*15;
+      if(score<best){best=score;match={id:uid(),team1:t1,team2:t2};}
+    }
+  }
+  return match;
+}
+
+function combinations(arr,k) {
+  if(k===0)return[[]]; if(arr.length<k)return[];
+  const[first,...rest]=arr;
+  return [...combinations(rest,k-1).map(c=>[first,...c]),...combinations(rest,k)];
+}
+function getTeamSplits([a,b,c,d]){return[[[a,b],[c,d]],[[a,c],[b,d]],[[a,d],[b,c]]];}
+
+// ═══ BOOT ══════════════════════════════════════════════════════════════
+async function boot() {
+  await new Promise(r=>setTimeout(r,1200));
+  const splash=document.getElementById('splash'); splash.classList.add('fade-out');
+  await new Promise(r=>setTimeout(r,500));
+  splash.style.display='none';
+  document.getElementById('main-app').classList.remove('hidden');
+  showLoading('Sincronizando con Google Sheets…');
+  await loadState();
+  hideLoading();
+  renderPage();
+}
+
+document.addEventListener('DOMContentLoaded', boot);
+window.addEventListener('online',  ()=>{setSyncStatus('idle');    showToast('🟢 Conexión restaurada');});
+window.addEventListener('offline', ()=>{setSyncStatus('offline'); showToast('📵 Sin conexión — modo local');});

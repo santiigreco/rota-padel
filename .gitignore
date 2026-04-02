@@ -1,0 +1,13 @@
+# Configuración local (contiene la URL privada de tu API)
+config.js
+
+# Node
+node_modules/
+npm-debug.log*
+
+# Build artifacts
+dist/
+
+# OS
+.DS_Store
+Thumbs.db

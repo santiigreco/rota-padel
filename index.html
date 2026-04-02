@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <meta name="theme-color" content="#0f172a" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <title>RotaPádel – Gestión de Turnos</title>
+  <meta name="description" content="App móvil para gestionar turnos, rotaciones y estadísticas de tu grupo de pádel." />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <div id="app">
+
+    <!-- ═══ SPLASH ══════════════════════════════════════════════════════════ -->
+    <div id="splash" class="splash">
+      <div class="splash-logo">
+        <span class="splash-icon">🎾</span>
+        <h1 class="splash-title">RotaPádel</h1>
+        <p class="splash-sub">Tu grupo, tu cancha</p>
+      </div>
+    </div>
+
+    <!-- ═══ MAIN APP ═════════════════════════════════════════════════════════ -->
+    <div id="main-app" class="main-app hidden">
+
+      <!-- Loading overlay (initial data fetch) -->
+      <div id="loading-overlay" class="loading-overlay hidden">
+        <div class="loading-box">
+          <div class="spinner-lg"></div>
+          <p class="loading-text" id="loading-text">Cargando datos…</p>
+          <p class="loading-sub">Sincronizando con Google Sheets</p>
+        </div>
+      </div>
+
+      <!-- Header -->
+      <header class="app-header" id="app-header">
+        <div class="header-content">
+          <span class="header-logo">🎾</span>
+          <h1 class="header-title" id="header-title">RotaPádel</h1>
+          <div class="header-actions" id="header-actions"></div>
+          <!-- Sync status indicator -->
+          <div id="sync-indicator" class="sync-indicator sync-idle" title="Sincronizado">☁️</div>
+        </div>
+      </header>
+
+      <!-- Page Container -->
+      <main class="page-container" id="page-container">
+      </main>
+
+      <!-- Bottom Navigation -->
+      <nav class="bottom-nav" id="bottom-nav">
+        <button class="nav-btn active" data-tab="play" id="nav-play" onclick="navigate('play')">
+          <span class="nav-icon">⚡</span>
+          <span class="nav-label">Jugar</span>
+        </button>
+        <button class="nav-btn" data-tab="players" id="nav-players" onclick="navigate('players')">
+          <span class="nav-icon">👥</span>
+          <span class="nav-label">Jugadores</span>
+        </button>
+        <button class="nav-btn" data-tab="stats" id="nav-stats" onclick="navigate('stats')">
+          <span class="nav-icon">📊</span>
+          <span class="nav-label">Estadísticas</span>
+        </button>
+      </nav>
+
+    </div>
+  </div>
+
+  <!-- ═══ MODAL ════════════════════════════════════════════════════════════ -->
+  <div id="modal-overlay" class="modal-overlay hidden" onclick="closeModal()">
+    <div class="modal-box" onclick="event.stopPropagation()">
+      <div id="modal-inner"></div>
+    </div>
+  </div>
+
+  <!-- ═══ TOAST ════════════════════════════════════════════════════════════ -->
+  <div id="toast" class="toast hidden"></div>
+
+  <!-- config.js debe cargarse ANTES de app.js — es generado por build.js  -->
+  <!-- En desarrollo local: copia config.example.js → config.js            -->
+  <script src="config.js" onerror="console.warn('config.js no encontrado. Modo offline activado.')"></script>
+  <script src="app.js"></script>
+</body>
+</html>
