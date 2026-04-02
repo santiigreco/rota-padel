@@ -387,18 +387,63 @@ async function finishSession() {
 }
 
 function renderSessionEnd(c) {
-  const s=state.session; const wonMap={};
-  for (const id of s.attendees) wonMap[id]=0;
+  const s = state.session;
+  const ps = {}, pairs = {};
+  for (const id of s.attendees) ps[id] = {wins:0, games:0};
+  
   for (const m of s.matches) {
-    if(m.score1>m.score2){wonMap[m.team1[0]]=(wonMap[m.team1[0]]||0)+1;wonMap[m.team1[1]]=(wonMap[m.team1[1]]||0)+1;}
-    else if(m.score2>m.score1){wonMap[m.team2[0]]=(wonMap[m.team2[0]]||0)+1;wonMap[m.team2[1]]=(wonMap[m.team2[1]]||0)+1;}
+    if(m.skipped) continue;
+    const t1w = m.score1 > m.score2, t2w = m.score2 > m.score1;
+    for (const id of m.team1) { ps[id].wins += t1w?1:0; ps[id].games += m.score1; }
+    for (const id of m.team2) { ps[id].wins += t2w?1:0; ps[id].games += m.score2; }
+    
+    const proc = (team, won) => {
+      const [a,b] = [...team].sort(); const k = a+'_'+b;
+      if (!pairs[k]){ pairs[k] = {wins:0, games:0, names:[playerById(a)?.name||'?', playerById(b)?.name||'?'].join(' & ')} }
+      if (won) pairs[k].wins++;
+      pairs[k].games += (team === m.team1 ? m.score1 : m.score2);
+    };
+    proc(m.team1, t1w); proc(m.team2, t2w);
   }
-  const sorted=s.attendees.slice().sort((a,b)=>(wonMap[b]||0)-(wonMap[a]||0));
-  const mvp=playerById(sorted[0]);
+  
+  const playersData = s.attendees.map(id => ({id, p:playerById(id), ...ps[id]}));
+  const rankWins = [...playersData].sort((a,b) => b.wins - a.wins || b.games - a.games);
+  const maxWins = Math.max(...playersData.map(x=>x.wins), 1);
+  const rankGames = [...playersData].sort((a,b) => b.games - a.games || b.wins - a.wins);
+  const bestPairs = Object.values(pairs).sort((a,b) => b.wins - a.wins || b.games - a.games).slice(0, 2);
+  
+  const mvp = rankWins[0];
+  
+  const htmlWins = rankWins.map((r,i) => `<div class="stat-row" style="padding: 10px 0; border-bottom: 1px dashed var(--border);"><div class="stat-avatar" style="background:${r.p?.color}; width:32px; height:32px; font-size:0.75rem;">${initials(r.p?.name)}</div><div style="flex:1;min-width:0; margin-left:12px;"><div style="display:flex; justify-content:space-between; margin-bottom:6px;"><span class="stat-name" style="font-size:0.9rem;">${escHtml(r.p?.name)}</span><span style="font-weight:900; color:var(--accent-bright); font-size:0.9rem;">${r.wins} v</span></div><div class="stat-bar-wrap" style="height:6px; max-width:100%"><div class="stat-bar" style="width:${Math.round((r.wins/maxWins)*100)}%;background:linear-gradient(90deg,var(--accent),var(--cyan))"></div></div></div></div>`).join('');
+  
+  const htmlGames = rankGames.slice(0, 3).map((r,i) => `<div style="display:flex; justify-content:space-between; align-items:center; padding: 6px 0;"><div style="display:flex; align-items:center; gap:8px;"><span class="stat-pos ${i===0?'gold':i===1?'silver':'bronze'}" style="font-size:0.85rem; min-width:16px;">${i+1}</span><span style="font-size:0.85rem; font-weight:600; color:var(--text-primary);">${escHtml(r.p?.name)}</span></div><div><span style="font-weight:900; color:var(--green); font-size:1rem;">${r.games}</span> <span style="font-size:0.65rem; color:var(--text-muted); font-weight:700;">GAMES</span></div></div>`).join('');
+  
+  const pairsHtml = bestPairs.length > 0 ? `<p class="section-title" style="margin-top:24px;margin-bottom:12px">👥 Mejores Parejas</p>` + bestPairs.map(pair => `<div class="pair-card" style="margin-bottom:8px; padding:12px;"><div style="font-size:0.9rem; font-weight:800; color:var(--text-primary); margin-bottom:6px;">${escHtml(pair.names)}</div><div style="display:flex; gap:16px; font-size:0.8rem; color:var(--text-secondary);"><div>Victorias: <strong style="color:var(--text-primary)">${pair.wins}</strong></div><div>Games ganados: <strong style="color:var(--text-primary)">${pair.games}</strong></div></div></div>`).join('') : '';
+
   c.innerHTML=`
-    <div class="end-card"><div class="end-icon">🏆</div><div class="end-title">¡Jornada Terminada!</div><div class="end-sub">${s.matches.length} partidos · ${s.attendees.length} jugadores</div>${mvp?`<div class="badge badge-amber" style="margin:0 auto 16px;font-size:0.85rem;padding:6px 16px">👑 MVP: ${escHtml(mvp.name)} (${wonMap[sorted[0]]} victorias)</div>`:''}</div>
-    <div class="card"><p class="section-title" style="margin-bottom:12px">Resumen</p><div class="gap-8">${sorted.map((id,i)=>{const p=playerById(id);const medals=['🥇','🥈','🥉'];return`<div class="stat-row"><div class="stat-pos ${i===0?'gold':i===1?'silver':i===2?'bronze':''}">${medals[i]||i+1}</div><div class="stat-avatar" style="background:${p?.color}">${initials(p?.name||'?')}</div><div><div class="stat-name">${escHtml(p?.name||'?')}</div></div><div style="margin-left:auto;text-align:right"><div class="stat-val">${wonMap[id]||0}</div><div class="stat-unit">victorias</div></div></div>`;}).join('')}</div></div>
-    <div class="gap-8"><button class="btn btn-primary btn-full" onclick="clearSession();startSetupFlow()">⚡ Nueva Jornada</button><button class="btn btn-ghost btn-full" onclick="clearSession()" style="font-size:0.85rem">🗑 Limpiar</button></div>`;
+    <div class="end-card" style="margin-bottom:20px;">
+      <div class="end-icon">🏆</div>
+      <div class="end-title">¡Jornada Terminada!</div>
+      <div class="end-sub">${s.matches.length} partidos · ${s.attendees.length} jugadores</div>
+      ${mvp ? `<div class="badge badge-amber" style="margin:0 auto;font-size:0.85rem;padding:6px 16px; box-shadow:0 4px 12px rgba(245,158,11,0.2)">👑 MVP: ${escHtml(mvp.p?.name)} (${mvp.wins}v)</div>` : ''}
+    </div>
+    
+    <div class="card" style="margin-bottom:20px; padding:20px 16px;">
+      <p class="section-title" style="margin-bottom:12px">📊 Ranking de Victorias</p>
+      <div>${htmlWins}</div>
+      
+      <p class="section-title" style="margin-top:28px; margin-bottom:12px">🎾 Top Games Ganados</p>
+      <div style="background: rgba(16,185,129,0.04); border: 1px solid rgba(16,185,129,0.15); border-radius: var(--radius-sm); padding:12px;">
+        ${htmlGames}
+      </div>
+      
+      ${pairsHtml}
+    </div>
+    
+    <div class="gap-8">
+      <button class="btn btn-primary btn-full" onclick="clearSession();startSetupFlow()">⚡ Nueva Jornada</button>
+      <button class="btn btn-ghost btn-full" onclick="clearSession()" style="font-size:0.85rem">Volver al Inicio</button>
+    </div>`;
 }
 
 function clearSession()         { state.session=null; CACHE.del(CK.SESSION); renderPage(); }
