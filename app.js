@@ -318,7 +318,7 @@ function renderActiveSession(c) {
   c.appendChild(sc);
   const acts=document.createElement('div'); acts.className='gap-8';
   acts.innerHTML=`
-    <button class="btn btn-green btn-full" id="btn-save-match" onclick="saveMatchResult()">💾 Guardar y Siguiente Partido</button>
+    <button class="btn btn-green btn-full" id="btn-save-match" onclick="saveMatchResult()">✅ Siguiente Partido</button>
     <button class="btn btn-ghost btn-full" onclick="skipMatch()" style="font-size:0.85rem">⏭ Saltar (sin resultado)</button>
     <button class="btn btn-ghost btn-full" onclick="promptFinishSession()" style="font-size:0.85rem;color:var(--amber)">🏁 Terminar Jornada</button>`;
   c.appendChild(acts);
@@ -327,15 +327,16 @@ function renderActiveSession(c) {
 
 function renderPlayCountBar(s) {
   const counts={}; for (const id of s.attendees) counts[id]=0;
-  for (const m of s.matches) for (const id of [...m.team1,...m.team2]) counts[id]++;
+  for (const m of s.matches) { if(!m.skipped) { for (const id of [...m.team1,...m.team2]) counts[id]++; } }
   const max=Math.max(...Object.values(counts),1);
   const items=s.attendees.map(id=>{const p=playerById(id);const n=counts[id];return`<div style="display:flex;align-items:center;gap:8px"><div style="width:28px;height:28px;border-radius:50%;background:${p?.color};display:flex;align-items:center;justify-content:center;font-size:0.65rem;font-weight:800;color:#fff;flex-shrink:0">${initials(p?.name||'?')}</div><div style="flex:1;min-width:0"><div style="font-size:0.75rem;font-weight:600;color:var(--text-secondary);margin-bottom:3px">${escHtml(p?.name||'?')} <span style="color:var(--accent-bright)">${n}</span></div><div class="progress-wrap"><div class="progress-bar" style="width:${Math.round((n/max)*100)}%"></div></div></div></div>`;}).join('');
   return `<div class="card"><p class="section-title" style="margin-bottom:10px">Partidos jugados</p><div class="gap-8">${items}</div></div>`;
 }
 
 function changeScore(team,delta) {
-  if(team===1){window._score1=Math.max(0,(window._score1||0)+delta);const el=document.getElementById('score1');if(el)el.textContent=window._score1;}
-  else{window._score2=Math.max(0,(window._score2||0)+delta);const el=document.getElementById('score2');if(el)el.textContent=window._score2;}
+  const maxScore = state.session?.gamesFormat || 99;
+  if(team===1){window._score1=Math.max(0,Math.min(maxScore,(window._score1||0)+delta));const el=document.getElementById('score1');if(el)el.textContent=window._score1;}
+  else{window._score2=Math.max(0,Math.min(maxScore,(window._score2||0)+delta));const el=document.getElementById('score2');if(el)el.textContent=window._score2;}
 }
 
 async function saveMatchResult() {
@@ -343,7 +344,7 @@ async function saveMatchResult() {
   if(s1===0&&s2===0){showToast('⚠️ Ingresa al menos un resultado');return;}
   const s=state.session; const m=s.currentMatch;
   const btn=document.getElementById('btn-save-match');
-  if(btn){btn.disabled=true;btn.innerHTML='<span class="spinner-sm"></span> Guardando…';}
+  if(btn){btn.disabled=true;btn.innerHTML='<span class="spinner-sm"></span> Procesando…';}
   const partido={id:uid(),id_jornada:s.id,team1_p1:m.team1[0],team1_p2:m.team1[1],team2_p1:m.team2[0],team2_p2:m.team2[1],score1:s1,score2:s2,skipped:false,match_index:s.matchIndex,team1:m.team1,team2:m.team2};
   s.matches.push(partido); s.currentMatch=generateNextMatch(s.attendees,s.matches); s.matchIndex++;
   CACHE.set(CK.SESSION,s);
@@ -420,6 +421,7 @@ function getPlayerStatsQuick(id) {
   for (const session of state.history) {
     if (!session.attendees.includes(id)) continue; sessions++;
     for (const m of session.matches) {
+      if(m.skipped) continue;
       const t1=m.team1.includes(id),t2=m.team2.includes(id); if(!t1&&!t2) continue;
       matches++; if(t1&&m.score1>m.score2)wins++; if(t2&&m.score2>m.score1)wins++;
     }
@@ -585,14 +587,14 @@ function editMatchScore(jId, mId) {
       <div>
         <div class="score-team" style="margin-bottom:12px">${escHtml(t1p1)}<br>& ${escHtml(t1p2)}</div>
         <div class="score-num">
-          <input type="number" id="edit-score1" class="input" style="width:70px;text-align:center;font-size:1.6rem;font-weight:900" value="${m.score1}" min="0">
+          <input type="number" id="edit-score1" class="input" style="width:70px;text-align:center;font-size:1.6rem;font-weight:900" value="${m.score1}" min="0" max="${j.gamesFormat || 99}">
         </div>
       </div>
       <div class="score-vs" style="margin-top:20px">VS</div>
       <div>
         <div class="score-team" style="margin-bottom:12px">${escHtml(t2p1)}<br>& ${escHtml(t2p2)}</div>
         <div class="score-num">
-          <input type="number" id="edit-score2" class="input" style="width:70px;text-align:center;font-size:1.6rem;font-weight:900" value="${m.score2}" min="0">
+          <input type="number" id="edit-score2" class="input" style="width:70px;text-align:center;font-size:1.6rem;font-weight:900" value="${m.score2}" min="0" max="${j.gamesFormat || 99}">
         </div>
       </div>
     </div>
@@ -692,6 +694,7 @@ function generateNextMatch(attendees, played) {
   const pc={},partC={},rivC={};
   for (const id of attendees) pc[id]=0;
   for (const m of played) {
+    if(m.skipped) continue;
     for (const id of [...m.team1,...m.team2]) pc[id]=(pc[id]||0)+1;
     for (const t of [m.team1,m.team2]){const k=[...t].sort().join('_');partC[k]=(partC[k]||0)+1;}
     for (const a of m.team1) for (const b of m.team2){const k=[a,b].sort().join('_');rivC[k]=(rivC[k]||0)+1;}
