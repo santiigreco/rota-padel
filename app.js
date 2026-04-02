@@ -287,50 +287,81 @@ function launchSession(attendees) {
 
 // ═══ ACTIVE SESSION ════════════════════════════════════════════════════
 function renderActiveSession(c) {
-  const s=state.session; const m=s.currentMatch; const pn=id=>playerById(id)?.name||'?';
-  const resting=s.attendees.filter(id=>!m.team1.includes(id)&&!m.team2.includes(id));
-  c.innerHTML+=`
-    <div class="session-banner">
-      <div class="session-banner-info"><div class="session-banner-title">🟢 Jornada en curso</div><div class="session-banner-sub">${s.attendees.length} jugadores · Mejor de ${s.gamesFormat} games</div></div>
-      <div style="text-align:right"><div style="font-size:1.5rem;font-weight:900;color:var(--accent-bright)">${s.matches.length}</div><div style="font-size:0.65rem;color:var(--text-muted);font-weight:700;text-transform:uppercase">Partidos</div></div>
-    </div>`;
-  c.innerHTML+=renderPlayCountBar(s);
-  const mc=document.createElement('div');
-  mc.innerHTML=`
-    <div class="match-number">🎾 Partido #${s.matchIndex}</div>
-    <div class="match-card">
-      <div class="vs-row">
-        <div class="team-col"><div class="team-label">Pareja 1</div><div class="team-player"><span>${escHtml(pn(m.team1[0]))}</span></div><div class="team-player"><span>${escHtml(pn(m.team1[1]))}</span></div></div>
-        <div class="vs-text">VS</div>
-        <div class="team-col right"><div class="team-label" style="text-align:right">Pareja 2</div><div class="team-player"><span>${escHtml(pn(m.team2[0]))}</span></div><div class="team-player"><span>${escHtml(pn(m.team2[1]))}</span></div></div>
+  const s=state.session;
+  const m=s.currentMatch; window._score1=0; window._score2=0;
+  const t1p1=playerById(m.team1[0])?.name,t1p2=playerById(m.team1[1])?.name,t2p1=playerById(m.team2[0])?.name,t2p2=playerById(m.team2[1])?.name;
+
+  let html = `<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px"><p class="section-title" style="margin:0">Jornada Activa</p><span class="badge badge-amber">Partido ${s.matchIndex}</span></div>`;
+
+  html += `
+  <div class="card" style="padding:20px 16px; margin-bottom:16px;">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:24px">
+      <div style="flex:1;text-align:center">
+        <div class="score-team">${escHtml(t1p1)}<br>& ${escHtml(t1p2)}</div>
+        <div class="score-num" style="display:flex;align-items:center;justify-content:center;gap:12px; margin-top:16px;">
+          <button class="btn btn-icon btn-ghost" onclick="changeScore(1,-1)" style="width:38px;height:38px;font-size:1.4rem; background:var(--bg-input)">−</button>
+          <div id="score1" style="font-size:3.5rem;font-weight:900;width:50px;line-height:1;color:var(--text-primary)">0</div>
+          <button class="btn btn-icon btn-ghost" onclick="changeScore(1,1)" style="width:38px;height:38px;font-size:1.4rem;color:var(--green); background:var(--bg-input)">+</button>
+        </div>
       </div>
-      ${resting.length>0?`<div class="resting-bar"><span class="resting-label">⏸ Descansan</span><span class="resting-names">${resting.map(id=>pn(id)).join(' · ')}</span></div>`:''}
-    </div>`;
-  c.appendChild(mc);
-  const sc=document.createElement('div'); sc.className='card';
-  sc.innerHTML=`
-    <p class="section-title" style="margin-bottom:14px">📝 Resultado</p>
-    <div class="score-row">
-      <div><div class="score-team">${escHtml(pn(m.team1[0]))} & ${escHtml(pn(m.team1[1]))}</div><div class="score-num"><button class="btn btn-icon" onclick="changeScore(1,-1)">−</button><div class="score-val" id="score1">0</div><button class="btn btn-icon" onclick="changeScore(1,1)">+</button></div></div>
-      <div class="score-vs">VS</div>
-      <div><div class="score-team">${escHtml(pn(m.team2[0]))} & ${escHtml(pn(m.team2[1]))}</div><div class="score-num"><button class="btn btn-icon" onclick="changeScore(2,-1)">−</button><div class="score-val" id="score2">0</div><button class="btn btn-icon" onclick="changeScore(2,1)">+</button></div></div>
-    </div>`;
-  c.appendChild(sc);
-  const acts=document.createElement('div'); acts.className='gap-8';
-  acts.innerHTML=`
-    <button class="btn btn-green btn-full" id="btn-save-match" onclick="saveMatchResult()">✅ Siguiente Partido</button>
-    <button class="btn btn-ghost btn-full" onclick="skipMatch()" style="font-size:0.85rem">⏭ Saltar (sin resultado)</button>
-    <button class="btn btn-ghost btn-full" onclick="promptFinishSession()" style="font-size:0.85rem;color:var(--amber)">🏁 Terminar Jornada</button>`;
-  c.appendChild(acts);
-  window._score1=0; window._score2=0;
+      <div class="score-vs" style="margin:0 10px; opacity:0.5;">VS</div>
+      <div style="flex:1;text-align:center">
+        <div class="score-team">${escHtml(t2p1)}<br>& ${escHtml(t2p2)}</div>
+        <div class="score-num" style="display:flex;align-items:center;justify-content:center;gap:12px; margin-top:16px;">
+          <button class="btn btn-icon btn-ghost" onclick="changeScore(2,-1)" style="width:38px;height:38px;font-size:1.4rem; background:var(--bg-input)">−</button>
+          <div id="score2" style="font-size:3.5rem;font-weight:900;width:50px;line-height:1;color:var(--text-primary)">0</div>
+          <button class="btn btn-icon btn-ghost" onclick="changeScore(2,1)" style="width:38px;height:38px;font-size:1.4rem;color:var(--green); background:var(--bg-input)">+</button>
+        </div>
+      </div>
+    </div>
+    
+    <div class="gap-8">
+      <button class="btn btn-green btn-full" id="btn-save-match" onclick="saveMatchResult()" style="padding:14px; font-size:1rem; box-shadow:0 4px 12px rgba(16,185,129,0.25);">✅ Siguiente Partido</button>
+      <div style="display:flex; gap:8px;">
+        <button class="btn btn-ghost btn-full" onclick="skipMatch()" style="font-size:0.85rem">⏭ Saltar (banco)</button>
+        <button class="btn btn-ghost btn-full" onclick="promptFinishSession()" style="font-size:0.85rem;color:var(--amber)">🏁 Terminar</button>
+      </div>
+    </div>
+  </div>`;
+
+  html += renderPlayCountBar(s);
+
+  if (s.matches.length>0) {
+    const rh=s.matches.slice(-3).reverse().map(mx=>{
+      const won1 = mx.score1 > mx.score2;
+      return `<div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid var(--border);font-size:0.8rem">
+        <div style="display:flex; flex-direction:column; gap:4px;">
+          <span style="${won1?'font-weight:800;color:var(--text-primary)':'color:var(--text-secondary)'}">${playerById(mx.team1[0])?.name} & ${playerById(mx.team1[1])?.name}</span> 
+          <span style="${!won1?'font-weight:800;color:var(--text-primary)':'color:var(--text-secondary)'}">${playerById(mx.team2[0])?.name} & ${playerById(mx.team2[1])?.name}</span>
+        </div>
+        <div style="font-weight:900; font-size:1.1rem; background:var(--bg-input); padding:4px 10px; border-radius:6px; letter-spacing:2px; color:var(--accent-bright)">${mx.score1}-${mx.score2}</div>
+      </div>`;
+    }).join('');
+    html += `<div class="card" style="margin-top:16px; padding:16px;"><p class="section-title" style="margin-bottom:12px; font-size:0.8rem;">⏱ Últimos Resultados</p>${rh}</div>`;
+  }
+  
+  c.innerHTML = html;
 }
 
 function renderPlayCountBar(s) {
   const counts={}; for (const id of s.attendees) counts[id]=0;
   for (const m of s.matches) { if(!m.skipped) { for (const id of [...m.team1,...m.team2]) counts[id]++; } }
-  const max=Math.max(...Object.values(counts),1);
-  const items=s.attendees.map(id=>{const p=playerById(id);const n=counts[id];return`<div style="display:flex;align-items:center;gap:8px"><div style="width:28px;height:28px;border-radius:50%;background:${p?.color};display:flex;align-items:center;justify-content:center;font-size:0.65rem;font-weight:800;color:#fff;flex-shrink:0">${initials(p?.name||'?')}</div><div style="flex:1;min-width:0"><div style="font-size:0.75rem;font-weight:600;color:var(--text-secondary);margin-bottom:3px">${escHtml(p?.name||'?')} <span style="color:var(--accent-bright)">${n}</span></div><div class="progress-wrap"><div class="progress-bar" style="width:${Math.round((n/max)*100)}%"></div></div></div></div>`;}).join('');
-  return `<div class="card"><p class="section-title" style="margin-bottom:10px">Partidos jugados</p><div class="gap-8">${items}</div></div>`;
+  
+  const items = s.attendees.map(id => {
+    const p = playerById(id); const n = counts[id];
+    let ringColor = 'transparent';
+    if(s.matches.length>0) {
+      const min = Math.min(...Object.values(counts));
+      if (n === min) ringColor = 'rgba(16,185,129,0.8)'; // Resaltar a los que jugaron menos (próximos)
+    }
+    return `<div style="position:relative; display:flex; flex-direction:column; align-items:center;">
+      <div style="width:40px; height:40px; border-radius:50%; background:${p?.color||'#000'}; display:flex; align-items:center; justify-content:center; color:white; font-size:0.85rem; font-weight:800; border: 2px solid ${ringColor}; box-shadow:0 2px 6px rgba(0,0,0,0.15);">${initials(p?.name)}</div>
+      <div style="position:absolute; top:-4px; right:-6px; background:var(--text-primary); color:var(--bg-card); font-size:0.65rem; font-weight:900; width:18px; height:18px; border-radius:50%; display:flex; align-items:center; justify-content:center; border:2px solid var(--bg-card); box-shadow:0 1px 3px rgba(0,0,0,0.2)">${n}</div>
+      <span style="font-size:0.55rem; color:var(--text-secondary); margin-top:6px; width:48px; text-align:center; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; text-transform:uppercase; font-weight:700;">${escHtml(p?.name)}</span>
+    </div>`;
+  }).join('');
+
+  return `<div class="card" style="padding:16px;"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;"><p class="section-title" style="margin:0; font-size:0.75rem;">Rotación actual</p><span style="font-size:0.65rem;color:var(--text-muted)">(Partidos Jugados)</span></div><div style="display:flex; flex-wrap:wrap; gap:16px 12px; justify-content:flex-start;">${items}</div></div>`;
 }
 
 function changeScore(team,delta) {
