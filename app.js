@@ -335,8 +335,16 @@ function renderPlayCountBar(s) {
 
 function changeScore(team,delta) {
   const maxScore = state.session?.gamesFormat || 99;
-  if(team===1){window._score1=Math.max(0,Math.min(maxScore,(window._score1||0)+delta));const el=document.getElementById('score1');if(el)el.textContent=window._score1;}
-  else{window._score2=Math.max(0,Math.min(maxScore,(window._score2||0)+delta));const el=document.getElementById('score2');if(el)el.textContent=window._score2;}
+  let s1 = window._score1 || 0;
+  let s2 = window._score2 || 0;
+  if (team===1) {
+    const n = s1+delta; if(n>=0 && n+s2<=maxScore) s1=n;
+  } else {
+    const n = s2+delta; if(n>=0 && s1+n<=maxScore) s2=n;
+  }
+  window._score1 = s1; window._score2 = s2;
+  const e1 = document.getElementById('score1'); if(e1) e1.textContent=s1;
+  const e2 = document.getElementById('score2'); if(e2) e2.textContent=s2;
 }
 
 async function saveMatchResult() {
@@ -362,12 +370,12 @@ async function skipMatch() {
 }
 
 function promptFinishSession() {
-  openModal(`<div class="modal-handle"></div><p class="modal-title">🏁 ¿Terminar la jornada?</p><p style="font-size:0.9rem;color:var(--text-secondary);margin-bottom:20px">Se guardarán ${state.session.matches.length} partidos en Google Sheets.</p><div class="gap-8"><button class="btn btn-amber btn-full" id="btn-confirm-finish" onclick="finishSession()">🏆 Sí, terminar</button><button class="btn btn-ghost btn-full" onclick="closeModal()">Seguir jugando</button></div>`);
+  openModal(`<div class="modal-handle"></div><p class="modal-title">🏁 ¿Terminar la jornada?</p><p style="font-size:0.9rem;color:var(--text-secondary);margin-bottom:20px">Se registrarán ${state.session.matches.length} partidos en el archivo histórico.</p><div class="gap-8"><button class="btn btn-amber btn-full" id="btn-confirm-finish" onclick="finishSession()">🏆 Sí, terminar</button><button class="btn btn-ghost btn-full" onclick="closeModal()">Seguir jugando</button></div>`);
 }
 
 async function finishSession() {
   const btn=document.getElementById('btn-confirm-finish');
-  if(btn){btn.disabled=true;btn.innerHTML='<span class="spinner-sm"></span> Guardando en Sheets…';}
+  if(btn){btn.disabled=true;btn.innerHTML='<span class="spinner-sm"></span> Finalizando…';}
   const s=state.session;
   setSyncStatus('syncing');
   try { await API.saveJornada({id:s.id,fecha:s.date,games_format:s.gamesFormat,attendees:s.attendees,finished:true}); setSyncStatus('idle'); }
