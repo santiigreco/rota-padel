@@ -128,6 +128,8 @@ function updateHeader() {
     title.textContent='RotaPádel';
     const rld=document.createElement('button'); rld.className='btn btn-sm btn-ghost btn-icon'; rld.innerHTML='🔄'; rld.title='Recargar desde Sheets'; rld.style.cssText='padding:7px 9px;font-size:0.9rem;'; rld.onclick=reloadFromApi; actions.appendChild(rld);
     if (state.session&&!state.session.finished) { const btn=document.createElement('button'); btn.className='btn btn-sm btn-red'; btn.innerHTML='✕ Jornada'; btn.style.cssText='font-size:0.75rem;padding:7px 10px;'; btn.onclick=confirmCancelSession; actions.appendChild(btn); }
+  } else if (state.currentTab==='history') {
+    title.textContent='Jornadas';
   } else if (state.currentTab==='players') {
     title.textContent='Jugadores';
     const btn=document.createElement('button'); btn.className='btn btn-sm btn-primary'; btn.innerHTML='+ Añadir'; btn.style.cssText='font-size:0.82rem;padding:8px 12px;'; btn.onclick=openAddPlayerModal; actions.appendChild(btn);
@@ -144,6 +146,7 @@ function renderPage() {
   const c=document.getElementById('page-container'); c.innerHTML='';
   const p=document.createElement('div'); p.className='page';
   if      (state.currentTab==='play')    renderPlayPage(p);
+  else if (state.currentTab==='history') renderHistoryPage(p);
   else if (state.currentTab==='players') renderPlayersPage(p);
   else                                   renderStatsPage(p);
   c.appendChild(p); updateHeader();
@@ -173,7 +176,7 @@ function renderNoSession(c) {
     const last=state.history[state.history.length-1];
     const date=new Date(last.date).toLocaleDateString('es-ES',{weekday:'long',day:'numeric',month:'long'});
     const names=last.attendees.map(id=>playerById(id)?.name||'?').join(', ');
-    c.innerHTML+=`<p class="section-title">Última Jornada</p><div class="card"><div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px"><div><div style="font-size:0.85rem;font-weight:700;text-transform:capitalize">${date}</div><div style="font-size:0.78rem;color:var(--text-muted);margin-top:2px">${last.matches.length} partidos · ${last.attendees.length} jugadores</div><div style="font-size:0.78rem;color:var(--text-secondary);margin-top:4px">${names}</div></div><span class="badge badge-green">✓ Terminada</span></div></div>`;
+    c.innerHTML+=`<p class="section-title">Última Jornada</p><div class="card" onclick="openJornadaDetails('${last.id}')" style="cursor:pointer; transition: all 0.2s;"><div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px"><div><div style="font-size:0.85rem;font-weight:700;text-transform:capitalize">${date}</div><div style="font-size:0.78rem;color:var(--text-muted);margin-top:2px">${last.matches.length} partidos · ${last.attendees.length} jugadores</div><div style="font-size:0.78rem;color:var(--text-secondary);margin-top:4px">${names}</div></div><span class="badge badge-blue">👁 Ver Detalles</span></div></div>`;
   }
 }
 
@@ -426,6 +429,131 @@ async function deletePlayer(id) {
   const {ok}=await withSync(()=>API.deletePlayer(id));
   if(ok){state.players=state.players.filter(p=>p.id!==id);CACHE.set(CK.PLAYERS,state.players);closeModal();renderPage();showToast('Jugador eliminado');}
   else if(btn){btn.disabled=false;btn.innerHTML='🗑 Eliminar';}
+}
+
+// ═══ HISTORY PAGE ══════════════════════════════════════════════════════
+function renderHistoryPage(page) {
+  const c=document.createElement('div'); c.className='page-padding gap-12';
+  if (state.history.length===0) {
+    c.innerHTML=`<div class="empty-state"><div class="empty-icon">🗓</div><div class="empty-title">Sin jornadas jugadas</div><div class="empty-sub">El historial de fechas y resultados aparecerá aquí.</div></div>`;
+  } else {
+    const list = state.history.slice().reverse().map(j => {
+      const date=new Date(j.date).toLocaleDateString('es-ES',{weekday:'long',day:'numeric',month:'long'});
+      const names=j.attendees.map(id=>playerById(id)?.name||'?').join(', ');
+      return `<div class="card" onclick="openJornadaDetails('${j.id}')" style="cursor:pointer">
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px">
+          <div>
+            <div style="font-size:0.95rem;font-weight:800;text-transform:capitalize;margin-bottom:4px;color:var(--text-primary)">${date}</div>
+            <div style="font-size:0.8rem;color:var(--text-secondary);margin-bottom:6px">${j.matches.length} partidos · ${j.attendees.length} jugadores</div>
+            <div style="font-size:0.75rem;color:var(--text-muted);display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden">${names}</div>
+          </div>
+          <button class="btn btn-icon btn-ghost btn-sm" style="flex-shrink:0">👁</button>
+        </div>
+      </div>`;
+    }).join('');
+    c.innerHTML=`<div class="gap-12">${list}</div>`;
+  }
+  page.appendChild(c);
+}
+
+function openJornadaDetails(id) {
+  const j = state.history.find(x=>x.id===id); if(!j) return;
+  const date=new Date(j.date).toLocaleDateString('es-ES',{weekday:'long',day:'numeric',month:'long'});
+  const matchesHtml = j.matches.map((m, idx) => {
+    const t1p1 = playerById(m.team1[0])?.name||'?', t1p2 = playerById(m.team1[1])?.name||'?';
+    const t2p1 = playerById(m.team2[0])?.name||'?', t2p2 = playerById(m.team2[1])?.name||'?';
+    return `<div class="card" style="padding:14px;margin-bottom:10px;background:var(--bg-input)">
+      <div style="font-size:0.75rem;color:var(--accent);margin-bottom:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.5px">Partido #${idx+1}</div>
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:8px">
+        <div style="flex:1;text-align:right">
+          <div style="font-size:0.85rem;font-weight:600;color:var(--text-primary);margin-bottom:2px">${escHtml(t1p1)}</div>
+          <div style="font-size:0.85rem;font-weight:600;color:var(--text-primary)">${escHtml(t1p2)}</div>
+        </div>
+        <div style="display:flex;align-items:center;gap:8px;background:var(--bg-card);padding:6px 12px;border-radius:var(--radius-sm);border:1px solid var(--border)">
+          <div style="font-size:1.2rem;font-weight:900;color:var(--text-primary)">${m.score1}</div>
+          <div style="font-size:0.9rem;color:var(--text-muted)">-</div>
+          <div style="font-size:1.2rem;font-weight:900;color:var(--text-primary)">${m.score2}</div>
+        </div>
+        <div style="flex:1;text-align:left">
+          <div style="font-size:0.85rem;font-weight:600;color:var(--text-primary);margin-bottom:2px">${escHtml(t2p1)}</div>
+          <div style="font-size:0.85rem;font-weight:600;color:var(--text-primary)">${escHtml(t2p2)}</div>
+        </div>
+      </div>
+      <div style="margin-top:14px;text-align:center;border-top:1px solid var(--border);padding-top:10px">
+        <button class="btn btn-ghost btn-sm" onclick="editMatchScore('${j.id}','${m.id}')" style="font-size:0.75rem;padding:6px 12px">✏️ Modificar</button>
+      </div>
+    </div>`;
+  }).join('');
+
+  openModal(`
+    <div class="modal-handle"></div>
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+      <p class="modal-title" style="margin:0;text-transform:capitalize">${date}</p>
+      <button class="btn btn-icon btn-ghost btn-sm" onclick="closeModal()">✕</button>
+    </div>
+    <p style="font-size:0.85rem;color:var(--text-secondary);margin-bottom:20px">${j.matches.length} partidos jugados</p>
+    <div style="max-height:65dvh;overflow-y:auto;padding-right:4px;">
+      ${matchesHtml}
+    </div>
+  `);
+}
+
+function editMatchScore(jId, mId) {
+  const j = state.history.find(x=>x.id===jId); if(!j) return;
+  const m = j.matches.find(x=>x.id===mId); if(!m) return;
+  
+  const t1p1 = playerById(m.team1[0])?.name||'?', t1p2 = playerById(m.team1[1])?.name||'?';
+  const t2p1 = playerById(m.team2[0])?.name||'?', t2p2 = playerById(m.team2[1])?.name||'?';
+  
+  openModal(`
+    <div class="modal-handle"></div>
+    <p class="modal-title">✏️ Modificar Resultado</p>
+    <p style="font-size:0.85rem;color:var(--text-secondary);margin-bottom:24px">Estás editando un partido del registro histórico.</p>
+    
+    <div class="score-row" style="margin-bottom:30px">
+      <div>
+        <div class="score-team" style="margin-bottom:12px">${escHtml(t1p1)}<br>& ${escHtml(t1p2)}</div>
+        <div class="score-num">
+          <input type="number" id="edit-score1" class="input" style="width:70px;text-align:center;font-size:1.6rem;font-weight:900" value="${m.score1}" min="0">
+        </div>
+      </div>
+      <div class="score-vs" style="margin-top:20px">VS</div>
+      <div>
+        <div class="score-team" style="margin-bottom:12px">${escHtml(t2p1)}<br>& ${escHtml(t2p2)}</div>
+        <div class="score-num">
+          <input type="number" id="edit-score2" class="input" style="width:70px;text-align:center;font-size:1.6rem;font-weight:900" value="${m.score2}" min="0">
+        </div>
+      </div>
+    </div>
+    
+    <div class="gap-8">
+      <button class="btn btn-primary btn-full" id="btn-save-edit-match" onclick="saveEditedMatch('${jId}','${mId}')">✓ Guardar Cambios</button>
+      <button class="btn btn-ghost btn-full" onclick="openJornadaDetails('${jId}')">Cancelar</button>
+    </div>
+  `);
+}
+
+async function saveEditedMatch(jId, mId) {
+  const s1 = parseInt(document.getElementById('edit-score1').value)||0;
+  const s2 = parseInt(document.getElementById('edit-score2').value)||0;
+  
+  const j = state.history.find(x=>x.id===jId); if(!j) return;
+  const m = j.matches.find(x=>x.id===mId); if(!m) return;
+  
+  const btn=document.getElementById('btn-save-edit-match'); if(btn){btn.disabled=true;btn.innerHTML='<span class="spinner-sm"></span> Guardando…';}
+  
+  const updatedMatch = {...m, score1: s1, score2: s2, id_jornada: jId};
+  
+  const {ok} = await withSync(()=>API.savePartido(updatedMatch));
+  if(ok) {
+    m.score1 = s1; m.score2 = s2;
+    CACHE.set(CK.HISTORY, state.history);
+    renderPage();
+    openJornadaDetails(jId);
+    showToast('✅ Partido modificado correctamente');
+  } else {
+    if(btn){btn.disabled=false;btn.innerHTML='✓ Guardar Cambios';}
+  }
 }
 
 // ═══ STATS PAGE ════════════════════════════════════════════════════════
