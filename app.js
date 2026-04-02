@@ -166,19 +166,58 @@ function renderPlayPage(page) {
 }
 
 function renderNoSession(c) {
+  // Banner 1: New Session Action
   c.innerHTML+=`
-    <div class="no-session">
-      <div class="no-session-icon">🎾</div>
-      <h2 class="no-session-title">¡A jugar!</h2>
-      <p class="no-session-sub">Selecciona los jugadores de hoy para generar los turnos automáticamente.</p>
-      <button class="btn btn-primary btn-full" onclick="startSetupFlow()" style="max-width:320px;margin:0 auto">⚡ Iniciar Jornada</button>
-    </div>`;
-  if (state.history.length>0) {
+    <div class="card" style="background: linear-gradient(135deg, var(--accent), var(--accent-dim)); border:none; padding: 24px 20px; text-align: center; color: white; display: flex; flex-direction: column; align-items: center; gap: 12px; box-shadow: 0 10px 25px rgba(59,130,246,0.25);">
+      <div style="font-size: 2.8rem; line-height: 1;">🎾</div>
+      <div>
+        <h2 style="font-size: 1.4rem; font-weight: 900; margin-bottom: 4px;">Nueva Jornada</h2>
+        <p style="font-size: 0.85rem; color: rgba(255,255,255,0.85); line-height: 1.4;">Elige a los jugadores de hoy y el motor armará los cruces.</p>
+      </div>
+      <button class="btn" onclick="startSetupFlow()" style="background: white; color: var(--accent-dim); width: 100%; max-width: 240px; margin-top: 8px; border-radius: 999px; box-shadow: 0 4px 12px rgba(0,0,0,0.15);">⚡ Iniciar ahora</button>
+    </div>
+  `;
+
+  if (state.history.length > 0) {
+    // Mini-Ranking (Top 3)
+    const stats = computeGlobalStats();
+    const top3 = stats.ranking.slice(0, 3);
+    
+    if (top3.length > 0 && top3[0].wins > 0) {
+      c.innerHTML+=`
+        <div style="margin-top: 10px;">
+          <p class="section-title">🔥 Mejores Rachas</p>
+          <div class="card" style="display:flex; justify-content:space-around; align-items:flex-end; padding: 24px 16px 20px;">
+            ${top3[1] ? renderPodium(top3[1], 2, 'silver', '60px') : '<div style="flex:1"></div>'}
+            ${renderPodium(top3[0], 1, 'gold', '85px')}
+            ${top3[2] ? renderPodium(top3[2], 3, 'bronze', '45px') : '<div style="flex:1"></div>'}
+          </div>
+        </div>
+      `;
+    }
+
+    // Ultima Jornada
     const last=state.history[state.history.length-1];
     const date=new Date(last.date).toLocaleDateString('es-ES',{weekday:'long',day:'numeric',month:'long'});
     const names=last.attendees.map(id=>playerById(id)?.name||'?').join(', ');
-    c.innerHTML+=`<p class="section-title">Última Jornada</p><div class="card" onclick="openJornadaDetails('${last.id}')" style="cursor:pointer; transition: all 0.2s;"><div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px"><div><div style="font-size:0.85rem;font-weight:700;text-transform:capitalize">${date}</div><div style="font-size:0.78rem;color:var(--text-muted);margin-top:2px">${last.matches.length} partidos · ${last.attendees.length} jugadores</div><div style="font-size:0.78rem;color:var(--text-secondary);margin-top:4px">${names}</div></div><span class="badge badge-blue">👁 Ver Detalles</span></div></div>`;
+    c.innerHTML+=`<div style="margin-top: 10px;"><p class="section-title">⏱ Última Jornada</p><div class="card" onclick="openJornadaDetails('${last.id}')" style="cursor:pointer; transition: all 0.2s;"><div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px"><div><div style="font-size:0.85rem;font-weight:700;text-transform:capitalize">${date}</div><div style="font-size:0.78rem;color:var(--text-muted);margin-top:2px">${last.matches.length} partidos · ${last.attendees.length} jugadores</div><div style="font-size:0.78rem;color:var(--text-secondary);margin-top:5px;display:-webkit-box;-webkit-line-clamp:1;-webkit-box-orient:vertical;overflow:hidden">${names}</div></div><span class="badge badge-blue">👁 Ver</span></div></div></div>`;
   }
+}
+
+function renderPodium(player, position, medalClass, height) {
+  const medals = {1:'🥇', 2:'🥈', 3:'🥉'};
+  const bg = {gold:'linear-gradient(180deg, #fbbf24, #b45309)', silver:'linear-gradient(180deg, #94a3b8, #475569)', bronze:'linear-gradient(180deg, #cd7f32, #78350f)'};
+  
+  return `
+    <div style="display:flex; flex-direction:column; align-items:center; flex:1;">
+      <div class="stat-avatar" style="background:${player.color}; border:2px solid var(--bg-card); z-index:2; margin-bottom:-10px;">${initials(player.name)}</div>
+      <div style="background: ${bg[medalClass]}; width: 100%; max-width: 58px; height: ${height}; border-radius: 8px 8px 0 0; display:flex; flex-direction:column; align-items:center; justify-content:flex-start; padding-top:12px; position:relative; box-shadow: inset 0 2px 5px rgba(255,255,255,0.2);">
+        <span style="font-size:1.15rem; filter: drop-shadow(0 2px 2px rgba(0,0,0,0.3));">${medals[position]}</span>
+        <span style="font-weight:900; color:white; font-size:0.85rem; margin-top:4px;">${player.wins}v</span>
+      </div>
+      <div style="font-size:0.72rem; font-weight:700; color:var(--text-secondary); margin-top:8px; text-transform:uppercase; max-width:60px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${escHtml(player.name)}</div>
+    </div>
+  `;
 }
 
 // ═══ SETUP FLOW ════════════════════════════════════════════════════════
@@ -687,7 +726,7 @@ async function boot() {
   await new Promise(r=>setTimeout(r,500));
   splash.style.display='none';
   document.getElementById('main-app').classList.remove('hidden');
-  showLoading('Sincronizando con Google Sheets…');
+  showLoading('Conectando base de datos…');
   await loadState();
   hideLoading();
   renderPage();
