@@ -19,6 +19,7 @@ const API = {
   async getAll()         { return this.request('getAll'); },
   async savePlayer(p)    { return this.request('savePlayer',   { data: encodeURIComponent(JSON.stringify(p)) }); },
   async deletePlayer(id) { return this.request('deletePlayer', { id }); },
+  async deleteJornada(id){ return this.request('deleteJornada',{ id }); },
   async saveJornada(j)   { return this.request('saveJornada',  { data: encodeURIComponent(JSON.stringify(j)) }); },
   async savePartido(p)   { return this.request('savePartido',  { data: encodeURIComponent(JSON.stringify(p)) }); },
 };
@@ -489,13 +490,44 @@ function openJornadaDetails(id) {
     <div class="modal-handle"></div>
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
       <p class="modal-title" style="margin:0;text-transform:capitalize">${date}</p>
-      <button class="btn btn-icon btn-ghost btn-sm" onclick="closeModal()">✕</button>
+      <div>
+        <button class="btn btn-icon btn-ghost btn-sm" onclick="confirmDeleteJornada('${id}')" style="margin-right:8px;color:var(--red)" title="Eliminar Jornada">🗑</button>
+        <button class="btn btn-icon btn-ghost btn-sm" onclick="closeModal()">✕</button>
+      </div>
     </div>
     <p style="font-size:0.85rem;color:var(--text-secondary);margin-bottom:20px">${j.matches.length} partidos jugados</p>
     <div style="max-height:65dvh;overflow-y:auto;padding-right:4px;">
       ${matchesHtml}
     </div>
   `);
+}
+
+function confirmDeleteJornada(id) {
+  const j = state.history.find(x=>x.id===id); if(!j) return;
+  const date=new Date(j.date).toLocaleDateString('es-ES',{weekday:'long',day:'numeric',month:'long'});
+  openModal(`
+    <div class="modal-handle"></div>
+    <p class="modal-title">🗑 Eliminar Jornada</p>
+    <p style="font-size:0.9rem;color:var(--text-secondary);margin-bottom:20px">¿Estás seguro de eliminar la jornada del <strong>${date}</strong> y sus ${j.matches.length} partidos? Los datos se borrarán para siempre.</p>
+    <div class="gap-8">
+      <button class="btn btn-red btn-full" id="btn-delete-jornada" onclick="executeDeleteJornada('${id}')">🗑 Sí, eliminar jornada</button>
+      <button class="btn btn-ghost btn-full" onclick="openJornadaDetails('${id}')">Cancelar</button>
+    </div>
+  `);
+}
+
+async function executeDeleteJornada(id) {
+  const btn=document.getElementById('btn-delete-jornada'); if(btn){btn.disabled=true;btn.innerHTML='<span class="spinner-sm"></span> Eliminando…';}
+  const {ok} = await withSync(()=>API.deleteJornada(id));
+  if(ok) {
+    state.history = state.history.filter(x => x.id !== id);
+    CACHE.set(CK.HISTORY, state.history);
+    closeModal();
+    renderPage();
+    showToast('🗑 Jornada eliminada correctamente');
+  } else {
+    if(btn){btn.disabled=false;btn.innerHTML='🗑 Sí, eliminar jornada';}
+  }
 }
 
 function editMatchScore(jId, mId) {

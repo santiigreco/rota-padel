@@ -144,6 +144,21 @@ function deletePlayer(id) {
   return { deleted: id };
 }
 
+function deleteJornada(id) {
+  const sheetJ = getSheet(SHEETS.JORNADAS);
+  const rowNumJ = findRowById(sheetJ, id);
+  if (rowNumJ > 0) sheetJ.deleteRow(rowNumJ);
+
+  const sheetP = getSheet(SHEETS.PARTIDOS);
+  const data = sheetP.getDataRange().getValues();
+  for (let i = data.length - 1; i >= 1; i--) {
+    if (String(data[i][1]) === String(id)) sheetP.deleteRow(i + 1);
+  }
+  
+  SpreadsheetApp.flush();
+  return { deleted: id };
+}
+
 function saveJornada(data) {
   const attendees = Array.isArray(data.attendees)
     ? JSON.stringify(data.attendees)
@@ -194,6 +209,9 @@ function doGet(e) {
         break;
       case 'deletePlayer':
         result = deletePlayer(p.id);
+        break;
+      case 'deleteJornada':
+        result = deleteJornada(p.id);
         break;
       case 'saveJornada':
         result = saveJornada(JSON.parse(decodeURIComponent(p.data)));
