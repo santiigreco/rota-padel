@@ -21,7 +21,7 @@ En lugar de utilizar una base de datos tradicional que requiere mantenimiento, l
 
 ---
 
-## 🛠 Instalación y Despliegue Local
+## 🛠 Instalación y Despliegue Local 
 
 ### 1. Configurar Base de Datos (Google Sheets)
 1. Crea una Hoja de Cálculo nueva en tu cuenta de Google.
