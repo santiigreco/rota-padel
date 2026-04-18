@@ -326,8 +326,9 @@ function renderActiveSession(c) {
 
   html += renderPlayCountBar(s);
 
-  if (s.matches.length > 0) {
-    const rh = s.matches.slice(-3).reverse().map(mx => {
+  const playedMatches = s.matches.filter(mx => !mx.skipped);
+  if (playedMatches.length > 0) {
+    const rh = playedMatches.slice(-3).reverse().map(mx => {
       const won1 = mx.score1 > mx.score2;
       return `<div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid var(--border);font-size:0.8rem">
         <div style="display:flex; flex-direction:column; gap:4px;">
@@ -381,12 +382,13 @@ async function saveMatchResult() {
   renderPage(); showToast('✅ Partido guardado. ¡Al siguiente!');
 }
 
-async function skipMatch() {
+function skipMatch() {
   const s = state.session; const m = s.currentMatch;
+  // El skip se guarda solo en memoria de sesión para que el algoritmo de rotación
+  // evite repetir la misma pareja — NO se envía a la API ni queda en el historial.
   const partido = { id: uid(), id_jornada: s.id, team1_p1: m.team1[0], team1_p2: m.team1[1], team2_p1: m.team2[0], team2_p2: m.team2[1], score1: 0, score2: 0, skipped: true, match_index: s.matchIndex, team1: m.team1, team2: m.team2 };
   s.matches.push(partido); s.currentMatch = generateNextMatch(s.attendees, s.matches); s.matchIndex++;
   CACHE.set(CK.SESSION, s);
-  withSync(() => API.savePartido(partido));
   renderPage(); showToast('⏭ Partido saltado');
 }
 
@@ -631,7 +633,90 @@ function renderHistoryPage(page) {
 function openJornadaDetails(id) {
   const j = state.history.find(x => x.id === id); if (!j) return;
   const date = new Date(j.date).toLocaleDateString('es-ES', { weekday: 'long', day: 'numeric', month: 'long' });
-  const matchesHtml = j.matches.map((m, idx) => {
+
+  // — Calcular stats de esta jornada —
+  const ps = {}, pairs = {};
+  for (const id2 of j.attendees) ps[id2] = { wins: 0, games: 0 };
+  const realMatches = j.matches.filter(m => !m.skipped);
+  for (const m of realMatches) {
+    const t1w = m.score1 > m.score2, t2w = m.score2 > m.score1;
+    for (const pid of m.team1) { if (!ps[pid]) ps[pid] = { wins: 0, games: 0 }; ps[pid].wins += t1w ? 1 : 0; ps[pid].games += m.score1; }
+    for (const pid of m.team2) { if (!ps[pid]) ps[pid] = { wins: 0, games: 0 }; ps[pid].wins += t2w ? 1 : 0; ps[pid].games += m.score2; }
+    const proc = (team, won) => {
+      const [a, b] = [...team].sort(); const k = a + '_' + b;
+      if (!pairs[k]) pairs[k] = { wins: 0, games: 0, names: [playerById(a)?.name || '?', playerById(b)?.name || '?'].join(' & ') };
+      if (won) pairs[k].wins++;
+      pairs[k].games += (team === m.team1 ? m.score1 : m.score2);
+    };
+    proc(m.team1, t1w); proc(m.team2, t2w);
+  }
+
+  const playersData = j.attendees.map(pid => ({ pid, p: playerById(pid), ...(ps[pid] || { wins: 0, games: 0 }) }));
+  const rankWins = [...playersData].sort((a, b) => b.wins - a.wins || b.games - a.games);
+  const maxWins = Math.max(...rankWins.map(x => x.wins), 1);
+  const mvp = rankWins[0];
+  const bestPairs = Object.values(pairs).sort((a, b) => b.wins - a.wins || b.games - a.games).slice(0, 2);
+
+  const htmlRanking = rankWins.map(r => `
+    <div class="stat-row" style="padding:10px 0;border-bottom:1px dashed var(--border)">
+      <div class="stat-avatar" style="background:${r.p?.color || '#888'};width:32px;height:32px;font-size:0.75rem">${initials(r.p?.name)}</div>
+      <div style="flex:1;min-width:0;margin-left:12px">
+        <div style="display:flex;justify-content:space-between;margin-bottom:6px">
+          <span class="stat-name" style="font-size:0.9rem">${escHtml(r.p?.name || '?')}</span>
+          <span style="font-weight:900;color:var(--accent-bright);font-size:0.9rem">${r.wins} v</span>
+        </div>
+        <div class="stat-bar-wrap" style="height:6px;max-width:100%">
+          <div class="stat-bar" style="width:${Math.round((r.wins / maxWins) * 100)}%;background:linear-gradient(90deg,var(--accent),var(--cyan))"></div>
+        </div>
+      </div>
+    </div>`).join('');
+
+  const pairsHtml = bestPairs.length > 0
+    ? `<p class="section-title" style="margin-top:20px;margin-bottom:10px">👥 Mejor Pareja</p>` +
+      bestPairs.map(pair => `
+        <div class="pair-card" style="margin-bottom:8px;padding:12px">
+          <div style="font-size:0.9rem;font-weight:800;color:var(--text-primary);margin-bottom:6px">${escHtml(pair.names)}</div>
+          <div style="display:flex;gap:16px;font-size:0.8rem;color:var(--text-secondary)">
+            <div>Victorias: <strong style="color:var(--text-primary)">${pair.wins}</strong></div>
+            <div>Games: <strong style="color:var(--text-primary)">${pair.games}</strong></div>
+          </div>
+        </div>`).join('')
+    : '';
+
+  openModal(`
+    <div class="modal-handle"></div>
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">
+      <p class="modal-title" style="margin:0;text-transform:capitalize">${date}</p>
+      <div>
+        <button class="btn btn-icon btn-ghost btn-sm" onclick="confirmDeleteJornada('${id}')" style="margin-right:8px;color:var(--red)" title="Eliminar Jornada">🗑</button>
+        <button class="btn btn-icon btn-ghost btn-sm" onclick="closeModal()">✕</button>
+      </div>
+    </div>
+    <p style="font-size:0.82rem;color:var(--text-muted);margin-bottom:16px">${realMatches.length} partidos · ${j.attendees.length} jugadores</p>
+
+    ${mvp && mvp.wins > 0 ? `
+    <div style="background:linear-gradient(135deg,rgba(245,158,11,0.12),rgba(245,158,11,0.04));border:1px solid rgba(245,158,11,0.25);border-radius:var(--radius);padding:14px 16px;display:flex;align-items:center;gap:14px;margin-bottom:16px">
+      <div class="stat-avatar" style="background:${mvp.p?.color || '#888'};width:44px;height:44px;font-size:1rem;flex-shrink:0">${initials(mvp.p?.name)}</div>
+      <div>
+        <div style="font-size:0.7rem;font-weight:700;color:var(--amber);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:2px">👑 MVP de la jornada</div>
+        <div style="font-size:1rem;font-weight:900;color:var(--text-primary)">${escHtml(mvp.p?.name || '?')}</div>
+        <div style="font-size:0.78rem;color:var(--text-muted);margin-top:2px">${mvp.wins} victorias · ${mvp.games} games</div>
+      </div>
+    </div>` : ''}
+
+    <div style="max-height:55dvh;overflow-y:auto;padding-right:4px">
+      <p class="section-title" style="margin-bottom:10px">📊 Ranking de la jornada</p>
+      <div class="card" style="padding:12px 16px;margin-bottom:4px">${htmlRanking}</div>
+      ${pairsHtml}
+      <button class="btn btn-ghost btn-full" onclick="openJornadaMatchList('${id}')" style="font-size:0.78rem;color:var(--text-muted);margin-top:16px">Ver partidos detallados →</button>
+    </div>
+  `);
+}
+
+function openJornadaMatchList(id) {
+  const j = state.history.find(x => x.id === id); if (!j) return;
+  const date = new Date(j.date).toLocaleDateString('es-ES', { weekday: 'long', day: 'numeric', month: 'long' });
+  const matchesHtml = j.matches.filter(m => !m.skipped).map((m, idx) => {
     const t1p1 = playerById(m.team1[0])?.name || '?', t1p2 = playerById(m.team1[1])?.name || '?';
     const t2p1 = playerById(m.team2[0])?.name || '?', t2p2 = playerById(m.team2[1])?.name || '?';
     return `<div class="card" style="padding:14px;margin-bottom:10px;background:var(--bg-input)">
@@ -659,17 +744,11 @@ function openJornadaDetails(id) {
 
   openModal(`
     <div class="modal-handle"></div>
-    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
-      <p class="modal-title" style="margin:0;text-transform:capitalize">${date}</p>
-      <div>
-        <button class="btn btn-icon btn-ghost btn-sm" onclick="confirmDeleteJornada('${id}')" style="margin-right:8px;color:var(--red)" title="Eliminar Jornada">🗑</button>
-        <button class="btn btn-icon btn-ghost btn-sm" onclick="closeModal()">✕</button>
-      </div>
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:16px">
+      <button class="btn btn-icon btn-ghost btn-sm" onclick="openJornadaDetails('${id}')">←</button>
+      <p class="modal-title" style="margin:0;text-transform:capitalize;font-size:1rem">${date}</p>
     </div>
-    <p style="font-size:0.85rem;color:var(--text-secondary);margin-bottom:20px">${j.matches.length} partidos jugados</p>
-    <div style="max-height:65dvh;overflow-y:auto;padding-right:4px;">
-      ${matchesHtml}
-    </div>
+    <div style="max-height:65dvh;overflow-y:auto;padding-right:4px">${matchesHtml}</div>
   `);
 }
 
