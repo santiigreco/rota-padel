@@ -824,8 +824,11 @@ function generateNextMatch(attendees, played) {
   const pc = {}, partC = {}, rivC = {};
   for (const id of attendees) pc[id] = 0;
   for (const m of played) {
-    if (m.skipped) continue;
-    for (const id of [...m.team1, ...m.team2]) pc[id] = (pc[id] || 0) + 1;
+    // pc (play count) ignora skips → no afecta quién tiene que jugar más
+    if (!m.skipped) {
+      for (const id of [...m.team1, ...m.team2]) pc[id] = (pc[id] || 0) + 1;
+    }
+    // partC y rivC SÍ cuentan los skips → evita repetir la misma pareja/cruce skipeado
     for (const t of [m.team1, m.team2]) { const k = [...t].sort().join('_'); partC[k] = (partC[k] || 0) + 1; }
     for (const a of m.team1) for (const b of m.team2) { const k = [a, b].sort().join('_'); rivC[k] = (rivC[k] || 0) + 1; }
   }
