@@ -176,6 +176,11 @@ function renderNoSession(c) {
       </div>
       <button class="btn" onclick="startSetupFlow()" style="background: white; color: var(--accent-dim); width: 100%; max-width: 240px; margin-top: 8px; border-radius: 999px; box-shadow: 0 4px 12px rgba(0,0,0,0.15);">⚡ Iniciar ahora</button>
     </div>
+
+    <div class="card" style="margin-top: 16px; padding: 16px; text-align: center; background: rgba(245, 158, 11, 0.1); border: 1px solid rgba(245, 158, 11, 0.3);">
+      <div style="font-size: 1.5rem; margin-bottom: 8px;">🏅</div>
+      <p style="font-size: 0.9rem; font-weight: 600; color: var(--amber);">Mencion honorífica a Meme que devolvió un saque dificil y no le correspondía - 25/04/2026</p>
+    </div>
   `;
 
   if (state.history.length > 0) {
