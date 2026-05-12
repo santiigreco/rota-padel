@@ -267,8 +267,8 @@ function proceedToConfig() {
     <div class="gap-12">
       <div class="input-group">
         <label class="input-label">Jugar al mejor de <span id="games-val">4</span> games</label>
-        <input type="range" id="games-range" min="2" max="8" value="4" step="1" oninput="updateGamesRange(this.value)" style="margin-top:8px"/>
-        <div style="display:flex;justify-content:space-between;font-size:0.72rem;color:var(--text-muted);margin-top:4px"><span>2</span><span>4</span><span>6</span><span>8</span></div>
+        <input type="range" id="games-range" min="2" max="13" value="4" step="1" oninput="updateGamesRange(this.value)" style="margin-top:8px"/>
+        <div style="display:flex;justify-content:space-between;font-size:0.72rem;color:var(--text-muted);margin-top:4px"><span>2</span><span>4</span><span>6</span><span>8</span><span>10</span><span>13</span></div>
       </div>
       <div class="card" style="background:rgba(59,130,246,0.06);border-color:rgba(59,130,246,0.2)">
         <p style="font-size:0.82rem;color:var(--text-secondary)">🔄 Rotaciones automáticas para <strong style="color:var(--text-primary)">${attendees.length} jugadores</strong>. Equidad garantizada.</p>
@@ -280,7 +280,7 @@ function proceedToConfig() {
 
 function updateGamesRange(val) {
   const v = parseInt(val); const el = document.getElementById('games-val'); if (el) el.textContent = v;
-  const r = document.getElementById('games-range'); if (r) { const pct = ((v - 2) / (8 - 2)) * 100; r.style.background = `linear-gradient(to right,var(--accent) 0%,var(--accent) ${pct}%,var(--border) ${pct}%)`; }
+  const r = document.getElementById('games-range'); if (r) { const pct = ((v - 2) / (13 - 2)) * 100; r.style.background = `linear-gradient(to right,var(--accent) 0%,var(--accent) ${pct}%,var(--border) ${pct}%)`; }
 }
 
 function launchSession(attendees) {
