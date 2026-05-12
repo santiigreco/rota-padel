@@ -899,7 +899,7 @@ function computeGlobalStats() {
     ranking: ids.map(row).sort((a, b) => b.wins - a.wins || b.matches - a.matches),
     gamesRanking: ids.map(row).sort((a, b) => b.games - a.games),
     attendance: ids.map(row).sort((a, b) => b.sessions - a.sessions),
-    pairs: Object.values(pairs).sort((a, b) => b.wins - a.wins || b.total - a.total),
+    pairs: Object.values(pairs).sort((a, b) => { const rA = a.total > 0 ? a.wins / a.total : 0; const rB = b.total > 0 ? b.wins / b.total : 0; return rB - rA || b.total - a.total; }),
   };
 }
 
