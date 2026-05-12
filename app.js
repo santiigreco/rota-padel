@@ -872,8 +872,7 @@ function renderStatTab(c, tab, stats) {
     const max = stats.gamesRanking[0]?.games || 1;
     c.innerHTML = `<p class="section-title">🎾 Games Ganados</p><div class="card">${stats.gamesRanking.map((r, i) => `<div class="stat-row"><div class="stat-pos ${i === 0 ? 'gold' : i === 1 ? 'silver' : i === 2 ? 'bronze' : ''}">${i + 1}</div><div class="stat-avatar" style="background:${r.color}">${initials(r.name)}</div><div style="flex:1;min-width:0"><div class="stat-name">${escHtml(r.name)}</div><div class="stat-bar-wrap" style="max-width:120px"><div class="stat-bar" style="width:${Math.round((r.games / max) * 100)}%;background:linear-gradient(90deg,var(--green),var(--cyan))"></div></div></div><div style="text-align:right"><div class="stat-val">${r.games}</div><div class="stat-unit">games</div></div></div>`).join('')}</div>`;
   } else if (tab === 'attend') {
-    const max = stats.attendance[0]?.sessions || 1;
-    c.innerHTML = `<p class="section-title">📅 Asistencia</p><div class="card">${stats.attendance.map((r, i) => `<div class="stat-row"><div class="stat-pos">${i + 1}</div><div class="stat-avatar" style="background:${r.color}">${initials(r.name)}</div><div style="flex:1;min-width:0"><div class="stat-name">${escHtml(r.name)}</div><div class="stat-bar-wrap" style="max-width:120px"><div class="stat-bar" style="width:${Math.round((r.sessions / max) * 100)}%;background:linear-gradient(90deg,var(--amber),var(--red))"></div></div></div><div style="text-align:right"><div class="stat-val">${r.sessions}</div><div class="stat-unit">de ${state.history.length}</div></div></div>`).join('')}</div>`;
+    c.innerHTML = `<p class="section-title">📅 Asistencia</p><div class="card">${stats.attendance.map((r, i) => { const pct = r.possible > 0 ? Math.round((r.sessions / r.possible) * 100) : 0; return `<div class="stat-row"><div class="stat-pos">${i + 1}</div><div class="stat-avatar" style="background:${r.color}">${initials(r.name)}</div><div style="flex:1;min-width:0"><div class="stat-name">${escHtml(r.name)}</div><div class="stat-bar-wrap" style="max-width:120px"><div class="stat-bar" style="width:${pct}%;background:linear-gradient(90deg,var(--amber),var(--red))"></div></div></div><div style="text-align:right"><div class="stat-val">${r.sessions}</div><div class="stat-unit">de ${r.possible} (${pct}%)</div></div></div>`; }).join('')}</div>`;
   } else if (tab === 'pairs') {
     if (!stats.pairs.length) { c.innerHTML = '<div class="empty-state"><div class="empty-icon">👥</div><div class="empty-title">Sin datos de parejas</div></div>'; return; }
     c.innerHTML = `<p class="section-title">👥 Mejores Parejas</p>` + stats.pairs.slice(0, 10).map((pair, i) => `<div class="pair-card"><div style="display:flex;align-items:center;justify-content:space-between;gap:8px"><div class="pair-names">${escHtml(pair.names)}</div>${i === 0 ? '<span class="badge badge-purple">🏆 Mejor Pareja</span>' : ''}</div><div class="pair-stats-row"><div class="pair-stat">Juntos: <strong>${pair.total}</strong></div><div class="pair-stat">Victorias: <strong>${pair.wins}</strong></div><div class="pair-stat">Win rate: <strong>${pair.total > 0 ? Math.round((pair.wins / pair.total) * 100) : 0}%</strong></div></div><div class="progress-wrap" style="margin-top:8px"><div class="progress-bar" style="width:${pair.total > 0 ? Math.round((pair.wins / pair.total) * 100) : 0}%;background:linear-gradient(90deg,var(--purple),var(--accent))"></div></div></div>`).join('');
@@ -894,11 +893,18 @@ function computeGlobalStats() {
     }
   }
   const ids = [...new Set([...state.players.map(p => p.id), ...Object.keys(ps)])];
-  const row = id => { const p = playerById(id); const s = ps[id] || { wins: 0, matches: 0, games: 0, sessions: 0 }; return { id, name: p?.name || '(Eliminado)', color: p?.color || '#888', ...s }; };
+  const row = id => { 
+    const p = playerById(id); 
+    const s = ps[id] || { wins: 0, matches: 0, games: 0, sessions: 0 }; 
+    let createdAt = 0;
+    if (id && id.length > 5) { const ts = parseInt(id.slice(0, -5), 36); if (!isNaN(ts) && ts > 1600000000000) createdAt = ts - 86400000; }
+    let possible = 0; for (const j of state.history) { if (new Date(j.date).getTime() >= createdAt) possible++; }
+    return { id, name: p?.name || '(Eliminado)', color: p?.color || '#888', possible, ...s }; 
+  };
   return {
     ranking: ids.map(row).sort((a, b) => b.wins - a.wins || b.matches - a.matches),
     gamesRanking: ids.map(row).sort((a, b) => b.games - a.games),
-    attendance: ids.map(row).sort((a, b) => b.sessions - a.sessions),
+    attendance: ids.map(row).sort((a, b) => { const pctA = a.possible > 0 ? a.sessions / a.possible : 0; const pctB = b.possible > 0 ? b.sessions / b.possible : 0; return pctB - pctA || b.sessions - a.sessions; }),
     pairs: Object.values(pairs).sort((a, b) => { const rA = a.total > 0 ? a.wins / a.total : 0; const rB = b.total > 0 ? b.wins / b.total : 0; return rB - rA || b.total - a.total; }),
   };
 }
