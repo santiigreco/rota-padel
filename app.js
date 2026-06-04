@@ -125,9 +125,12 @@ async function loadState() {
 // ═══ TORNEOS ════════════════════════════════════════════════════════════
 function openTorneoModal() {
   const list = state.torneos.map(t => `
-    <button class="btn btn-ghost btn-full" style="justify-content:flex-start; text-align:left; font-weight:${t.id === state.activeTorneo ? '800' : '500'}; color:${t.id === state.activeTorneo ? 'var(--accent)' : 'inherit'}" onclick="changeTorneo('${t.id}')">
-      ${t.id === state.activeTorneo ? '✓ ' : ''}${escHtml(t.name)}
-    </button>
+    <div style="display:flex; gap:8px;">
+      <button class="btn btn-ghost" style="flex:1; justify-content:flex-start; text-align:left; font-weight:${t.id === state.activeTorneo ? '800' : '500'}; color:${t.id === state.activeTorneo ? 'var(--accent)' : 'inherit'}" onclick="changeTorneo('${t.id}')">
+        ${t.id === state.activeTorneo ? '✓ ' : ''}${escHtml(t.name)}
+      </button>
+      <button class="btn btn-icon btn-ghost" onclick="openEditTorneoModal('${t.id}')" title="Editar Torneo">⚙️</button>
+    </div>
   `).join('');
 
   openModal(`
@@ -162,6 +165,75 @@ async function createTorneo() {
     state.torneos.push({ id, name });
     CACHE.set(CK.TORNEOS, state.torneos);
     changeTorneo(id);
+  }
+}
+
+function openEditTorneoModal(id) {
+  const t = state.torneos.find(x => x.id === id); if (!t) return;
+  openModal(`
+    <div class="modal-handle"></div>
+    <p class="modal-title">⚙️ Editar Torneo</p>
+    <div class="input-group" style="margin-bottom:16px;">
+      <input type="text" id="edit-torneo-name" class="input" value="${escHtml(t.name)}" />
+    </div>
+    <div class="gap-8">
+      <button class="btn btn-primary btn-full" onclick="renameTorneo('${id}')">✓ Guardar Nombre</button>
+      <button class="btn btn-red btn-full" onclick="confirmDeleteTorneo('${id}')" ${id === 'torneo_inicial' ? 'disabled' : ''}>🗑 Eliminar Torneo</button>
+      <button class="btn btn-ghost btn-full" onclick="openTorneoModal()">Volver</button>
+    </div>
+  `);
+}
+
+async function renameTorneo(id) {
+  const t = state.torneos.find(x => x.id === id); if (!t) return;
+  const name = document.getElementById('edit-torneo-name')?.value.trim();
+  if (!name || name === t.name) { openTorneoModal(); return; }
+  
+  const btn = event.target;
+  const oldHtml = btn.innerHTML;
+  btn.disabled = true; btn.innerHTML = '<span class="spinner-sm"></span> Guardando…';
+  
+  const { ok } = await withSync(() => API.saveTorneo({ id, nombre: name }));
+  if (ok) {
+    t.name = name;
+    CACHE.set(CK.TORNEOS, state.torneos);
+    renderPage();
+    openTorneoModal();
+    showToast('✅ Nombre actualizado');
+  } else {
+    btn.disabled = false; btn.innerHTML = oldHtml;
+  }
+}
+
+function confirmDeleteTorneo(id) {
+  if (id === 'torneo_inicial') { showToast('⚠️ El Torneo Inicial no se puede borrar'); return; }
+  openModal(`
+    <div class="modal-handle"></div>
+    <p class="modal-title">🗑 Eliminar Torneo</p>
+    <p style="font-size:0.9rem;color:var(--text-secondary);margin-bottom:20px">¿Estás seguro de eliminar este torneo? <strong>No se borrarán los partidos (quedarán huérfanos)</strong>, pero el torneo desaparecerá.</p>
+    <div class="gap-8">
+      <button class="btn btn-red btn-full" onclick="executeDeleteTorneo('${id}')">🗑 Sí, eliminar</button>
+      <button class="btn btn-ghost btn-full" onclick="openEditTorneoModal('${id}')">Cancelar</button>
+    </div>
+  `);
+}
+
+async function executeDeleteTorneo(id) {
+  const btn = event.target;
+  const oldHtml = btn.innerHTML;
+  btn.disabled = true; btn.innerHTML = '<span class="spinner-sm"></span> Eliminando…';
+  
+  const { ok } = await withSync(() => API.deleteTorneo(id));
+  if (ok) {
+    state.torneos = state.torneos.filter(x => x.id !== id);
+    if (state.activeTorneo === id) {
+      state.activeTorneo = state.torneos.length > 0 ? state.torneos[0].id : null;
+      CACHE.set(CK.ACTIVE_TORNEO, state.activeTorneo);
+    }
+    CACHE.set(CK.TORNEOS, state.torneos);
+    closeModal(); renderPage(); showToast('🗑 Torneo eliminado');
+  } else {
+    btn.disabled = false; btn.innerHTML = oldHtml;
   }
 }
 
@@ -290,21 +362,44 @@ function renderNoSession(c) {
     </div>
   `;
 
-  // Elo Explanation
-  c.innerHTML += `
     <div class="card" style="margin-top:24px; padding:16px; border-left:4px solid var(--amber);">
-      <div style="display:flex; align-items:center; gap:8px; margin-bottom:12px;">
-        <span style="font-size:1.4rem;">🏅</span>
-        <h3 style="font-size:1rem; font-weight:800; margin:0;">¿Cómo funciona el ELO?</h3>
+      <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:12px;">
+        <div style="display:flex; align-items:center; gap:8px;">
+          <span style="font-size:1.4rem;">🏅</span>
+          <h3 style="font-size:1rem; font-weight:800; margin:0;">¿Cómo funciona el ELO?</h3>
+        </div>
+        <button class="btn btn-ghost btn-sm" onclick="document.getElementById('elo-examples').style.display='block'; this.style.display='none';" style="font-size:0.75rem;">Ver Ejemplos ▼</button>
       </div>
       <p style="font-size:0.85rem; color:var(--text-secondary); line-height:1.5; margin-bottom:12px;">
-        El nuevo ranking de RotaPádel se basa en puntos <strong>Elo</strong>. Todos empiezan con 1000 puntos.
+        El ranking usa el sistema <strong>Elo</strong>. Ganarle a rivales más fuertes (o por mayor diferencia de games) te da más puntos. Si pierdes siendo el favorito, bajas drásticamente.
       </p>
-      <ul style="font-size:0.8rem; color:var(--text-secondary); padding-left:20px; margin:0; display:flex; flex-direction:column; gap:6px;">
-        <li>Ganarle a rivales con <strong>más Elo</strong> te da más puntos.</li>
-        <li>Ganar por <strong>mucha diferencia de games</strong> aumenta tu ganancia de puntos.</li>
-        <li>Si pierdes contra alguien de menor nivel, tu Elo bajará drásticamente.</li>
-      </ul>
+      
+      <div id="elo-examples" style="display:none; background:var(--bg-card); border-radius:var(--radius-sm); border:1px solid var(--border); padding:12px; margin-top:12px;">
+        <p style="font-size:0.8rem; font-weight:700; color:var(--text-primary); margin-bottom:8px;">Ejemplos Matemáticos (Base 1000):</p>
+        
+        <div style="display:flex; flex-direction:column; gap:8px;">
+          <div style="font-size:0.75rem; padding:8px; border-radius:6px; background:rgba(34,197,94,0.1); border:1px solid rgba(34,197,94,0.2);">
+            <strong style="color:var(--green);">Ganas 6 - 0 vs Pareja Igual (1000 pts)</strong><br>
+            <span style="color:var(--text-secondary);">Diferencia: 6 games → Ganas <strong>+25.3 pts</strong>. Tu Elo sube a 1025.</span>
+          </div>
+          
+          <div style="font-size:0.75rem; padding:8px; border-radius:6px; background:rgba(245,158,11,0.1); border:1px solid rgba(245,158,11,0.2);">
+            <strong style="color:var(--amber);">Ganas 6 - 5 vs Pareja Igual (1000 pts)</strong><br>
+            <span style="color:var(--text-secondary);">Diferencia: 1 game → Ganas <strong>+14.6 pts</strong>. Tu Elo sube a 1015.</span>
+          </div>
+          
+          <div style="font-size:0.75rem; padding:8px; border-radius:6px; background:rgba(59,130,246,0.1); border:1px solid rgba(59,130,246,0.2);">
+            <strong style="color:var(--accent);">Das el batacazo (1000 pts vs 1100 pts)</strong><br>
+            <span style="color:var(--text-secondary);">Ganas 6 - 3 → Ganas <strong>+33.5 pts</strong> (por rival difícil y dif. de games).</span>
+          </div>
+          
+          <div style="font-size:0.75rem; padding:8px; border-radius:6px; background:rgba(239,68,68,0.1); border:1px solid rgba(239,68,68,0.2);">
+            <strong style="color:var(--red);">Pierdes siendo favorito (1100 pts vs 1000 pts)</strong><br>
+            <span style="color:var(--text-secondary);">Pierdes 4 - 6 → Pierdes <strong>-23.7 pts</strong> porque se esperaba que ganaras.</span>
+          </div>
+        </div>
+      </div>
+      
       <button class="btn btn-ghost btn-full" onclick="navigate('stats')" style="margin-top:16px; font-size:0.85rem; color:var(--amber); background:rgba(245,158,11,0.1);">Ver Ranking Actual 🏆</button>
     </div>
   `;
@@ -1109,7 +1204,18 @@ function computeGlobalStats() {
   const history = getActiveHistory().sort((a, b) => new Date(a.date) - new Date(b.date));
 
   for (const session of history) {
-    for (const id of session.attendees) { if (!ps[id]) ps[id] = { wins: 0, matches: 0, games: 0, sessions: 0, elo: 1000 }; ps[id].sessions++; }
+    let att = session.attendees;
+    if (!att || att.length === 0) {
+      const attSet = new Set();
+      session.matches.forEach(m => {
+        if (!m.skipped) {
+          m.team1.forEach(id => attSet.add(id));
+          m.team2.forEach(id => attSet.add(id));
+        }
+      });
+      att = [...attSet];
+    }
+    for (const id of att) { if (!ps[id]) ps[id] = { wins: 0, matches: 0, games: 0, sessions: 0, elo: 1000 }; ps[id].sessions++; }
     const matches = [...session.matches].sort((a, b) => a.matchIndex - b.matchIndex);
     
     for (const m of matches) {
