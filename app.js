@@ -1290,6 +1290,16 @@ function renderStatTab(c, tab, stats) {
           <text x="-5" y="${h/2 + 4}" font-size="10" fill="var(--text-muted)" text-anchor="end">${Math.round((maxElo+minElo)/2)}</text>
           <text x="-5" y="${h + 4}" font-size="10" fill="var(--text-muted)" text-anchor="end">${minElo}</text>
           
+          <!-- X-Axis Labels (Dates) -->
+          ${topPlayers[0].eloHistory.map((hist, idx) => {
+            if (idx === 0 || idx === maxIdx || maxIdx < 4 || (idx % Math.floor(maxIdx/3) === 0)) {
+              const x = (idx / maxIdx) * w;
+              let dLabel = hist.date === 'Inicio' ? 'Inicio' : new Date(hist.date).toLocaleDateString('es-ES', { day: 'numeric', month: 'short' });
+              return `<text x="${x}" y="${h + 16}" font-size="8" fill="var(--text-muted)" text-anchor="middle">${dLabel}</text>`;
+            }
+            return '';
+          }).join('')}
+          
           ${lines}
         </svg>
         <div style="display:flex; flex-wrap:wrap; gap:12px; margin-top:20px; justify-content:center;">
@@ -1375,12 +1385,11 @@ function computeGlobalStats() {
       proc(m.team1, t1w); proc(m.team2, t2w);
     }
     
-    // Al final de la jornada, guardar el Elo resultante para el historial
-    for (const id of att) {
-      if (ps[id]) {
-        ps[id].eloHistory.push({ date: session.date, elo: ps[id].elo });
-      }
-    }
+    // Al final de la jornada, guardar el Elo resultante para TODOS los jugadores,
+    // incluso si estuvieron ausentes, para que su linea avance recta en el grafico.
+    Object.keys(ps).forEach(id => {
+      ps[id].eloHistory.push({ date: session.date, elo: ps[id].elo });
+    });
   }
 
   const ids = [...new Set([...state.players.map(p => p.id), ...Object.keys(ps)])];
