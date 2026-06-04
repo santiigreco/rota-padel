@@ -1170,7 +1170,8 @@ function renderStatTab(c, tab, stats) {
 }
 
 function getActiveHistory() {
-  return state.history.filter(h => h.id_torneo === state.activeTorneo);
+  if (!state.activeTorneo) return state.history;
+  return state.history.filter(h => h.id_torneo === state.activeTorneo || (!h.id_torneo && state.activeTorneo === 'torneo_inicial'));
 }
 
 function computeGlobalStats() {
