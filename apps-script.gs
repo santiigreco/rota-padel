@@ -23,12 +23,14 @@ const SHEETS = {
   JUGADORES: 'Jugadores',
   JORNADAS:  'Jornadas',
   PARTIDOS:  'Partidos',
+  TORNEOS:   'Torneos',
 };
 
 const HEADERS = {
   Jugadores: ['id', 'nombre', 'color', 'created_at'],
-  Jornadas:  ['id', 'fecha', 'games_format', 'attendees', 'finished'],
+  Jornadas:  ['id', 'id_torneo', 'fecha', 'games_format', 'attendees', 'finished'],
   Partidos:  ['id', 'id_jornada', 'team1_p1', 'team1_p2', 'team2_p1', 'team2_p2', 'score1', 'score2', 'skipped', 'match_index'],
+  Torneos:   ['id', 'nombre', 'created_at'],
 };
 
 // ─── Utils de hoja ────────────────────────────────────────────────────────────
@@ -91,8 +93,24 @@ function upsertRow(sheetName, obj) {
 
 function getAllData() {
   const jugadores = sheetToObjects(getSheet(SHEETS.JUGADORES));
-  const jornadas  = sheetToObjects(getSheet(SHEETS.JORNADAS));
+  let jornadas  = sheetToObjects(getSheet(SHEETS.JORNADAS));
   const partidos  = sheetToObjects(getSheet(SHEETS.PARTIDOS));
+  let torneos   = sheetToObjects(getSheet(SHEETS.TORNEOS));
+
+  // Migración automática: Crear 'Torneo Inicial' si no hay torneos pero hay jornadas
+  if (torneos.length === 0 && jornadas.length > 0) {
+    const torneoInicial = { id: 'torneo_inicial', nombre: 'Torneo Inicial', created_at: new Date().toISOString() };
+    saveTorneo(torneoInicial);
+    torneos.push(torneoInicial);
+    
+    // Asignar jornadas existentes a este torneo
+    jornadas.forEach(j => {
+      if (!j.id_torneo) {
+        j.id_torneo = 'torneo_inicial';
+        saveJornada(j); // Resave to update sheet
+      }
+    });
+  }
 
   // Normalizar tipos
   jugadores.forEach(j => {
@@ -101,8 +119,14 @@ function getAllData() {
     j.color  = String(j.color || '#3b82f6');
   });
 
+  torneos.forEach(t => {
+    t.id     = String(t.id);
+    t.nombre = String(t.nombre);
+  });
+
   jornadas.forEach(j => {
     j.id          = String(j.id);
+    j.id_torneo   = String(j.id_torneo || 'torneo_inicial');
     j.fecha       = String(j.fecha);
     j.games_format = parseInt(j.games_format) || 4;
     j.finished    = (j.finished === true || String(j.finished).toUpperCase() === 'TRUE');
@@ -122,7 +146,7 @@ function getAllData() {
     p.match_index = parseInt(p.match_index) || 0;
   });
 
-  return { jugadores, jornadas, partidos };
+  return { torneos, jugadores, jornadas, partidos };
 }
 
 function savePlayer(data) {
@@ -134,6 +158,24 @@ function savePlayer(data) {
   };
   upsertRow(SHEETS.JUGADORES, obj);
   return { saved: obj.id };
+}
+
+function saveTorneo(data) {
+  const obj = {
+    id:         String(data.id),
+    nombre:     String(data.nombre || data.name),
+    created_at: data.created_at || data.createdAt || new Date().toISOString(),
+  };
+  upsertRow(SHEETS.TORNEOS, obj);
+  return { saved: obj.id };
+}
+
+function deleteTorneo(id) {
+  const sheet  = getSheet(SHEETS.TORNEOS);
+  const rowNum = findRowById(sheet, id);
+  if (rowNum > 0) sheet.deleteRow(rowNum);
+  SpreadsheetApp.flush();
+  return { deleted: id };
 }
 
 function deletePlayer(id) {
@@ -166,6 +208,7 @@ function saveJornada(data) {
 
   const obj = {
     id:          String(data.id),
+    id_torneo:   String(data.id_torneo || data.torneoId || 'torneo_inicial'),
     fecha:       String(data.fecha || data.date || new Date().toISOString()),
     games_format: parseInt(data.games_format || data.gamesFormat || 4),
     attendees:   attendees,
@@ -204,6 +247,12 @@ function doGet(e) {
       case 'getAll':
         result = getAllData();
         break;
+      case 'saveTorneo':
+        result = saveTorneo(JSON.parse(decodeURIComponent(p.data)));
+        break;
+      case 'deleteTorneo':
+        result = deleteTorneo(p.id);
+        break;
       case 'savePlayer':
         result = savePlayer(JSON.parse(decodeURIComponent(p.data)));
         break;
@@ -224,6 +273,7 @@ function doGet(e) {
         break;
       default:
         result = { error: 'Acción desconocida: ' + action };
+
     }
 
     return ContentService
