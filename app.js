@@ -256,48 +256,58 @@ function renderPlayPage(page) {
 }
 
 function renderNoSession(c) {
-  // Banner 1: New Session Action
+  // Hero Section
   c.innerHTML += `
-    <div class="card" style="background: linear-gradient(135deg, var(--accent), var(--accent-dim)); border:none; padding: 24px 20px; text-align: center; color: white; display: flex; flex-direction: column; align-items: center; gap: 12px; box-shadow: 0 10px 25px rgba(59,130,246,0.25);">
-      <div style="font-size: 2.8rem; line-height: 1;">🎾</div>
+    <div class="card" style="background: linear-gradient(135deg, var(--accent), var(--cyan)); border:none; padding: 28px 20px; text-align: center; color: white; display: flex; flex-direction: column; align-items: center; gap: 12px; box-shadow: 0 10px 25px rgba(59,130,246,0.3); position: relative; overflow: hidden;">
+      <div style="position: absolute; top: -20px; right: -20px; font-size: 8rem; opacity: 0.1; transform: rotate(15deg); pointer-events: none;">🎾</div>
+      <div style="font-size: 0.8rem; font-weight: 800; background: rgba(255,255,255,0.2); padding: 4px 10px; border-radius: 20px; letter-spacing: 1px;">ROTA-PÁDEL v2.0</div>
       <div>
-        <h2 style="font-size: 1.4rem; font-weight: 900; margin-bottom: 4px;">Nueva Jornada</h2>
-        <p style="font-size: 0.85rem; color: rgba(255,255,255,0.85); line-height: 1.4;">Elige a los jugadores de hoy y el motor armará los cruces.</p>
+        <h2 style="font-size: 1.8rem; font-weight: 900; margin-bottom: 6px;">¡Bienvenido!</h2>
+        <p style="font-size: 0.9rem; color: rgba(255,255,255,0.9); line-height: 1.5; max-width: 280px;">Crea fixtures instantáneos, anota resultados en cualquier orden y compite en el nuevo sistema de Ranking Elo.</p>
       </div>
-      <button class="btn" onclick="startSetupFlow()" style="background: white; color: var(--accent-dim); width: 100%; max-width: 240px; margin-top: 8px; border-radius: 999px; box-shadow: 0 4px 12px rgba(0,0,0,0.15);">⚡ Iniciar ahora</button>
-    </div>
-
-    <div class="card" style="margin-top: 16px; padding: 16px; text-align: center; background: rgba(245, 158, 11, 0.1); border: 1px solid rgba(245, 158, 11, 0.3);">
-      <div style="font-size: 1.5rem; margin-bottom: 8px;">🏅</div>
-      <p style="font-size: 0.9rem; font-weight: 600; color: var(--amber);">Mencion honorífica a Meme que devolvió un saque dificil y no le correspondía - 25/04/2026</p>
+      <button class="btn" onclick="startSetupFlow()" style="background: white; color: var(--accent); width: 100%; max-width: 240px; margin-top: 12px; border-radius: 999px; box-shadow: 0 4px 12px rgba(0,0,0,0.2); font-size: 1.05rem; font-weight: 800; padding: 14px;">⚡ Iniciar Nueva Jornada</button>
     </div>
   `;
 
-  const history = getActiveHistory();
-  if (history.length > 0) {
-    // Mini-Ranking (Top 3)
-    const stats = computeGlobalStats();
-    const top3 = stats.ranking.slice(0, 3);
+  // Torneos Quick Access
+  const torneosActivos = state.torneos.slice(-2).reverse();
+  const torneosHtml = torneosActivos.map(t => `
+    <button class="btn btn-ghost" onclick="changeTorneo('${t.id}')" style="flex:1; display:flex; flex-direction:column; align-items:center; padding:12px; border:1px solid ${state.activeTorneo === t.id ? 'var(--accent)' : 'var(--border)'}; background:${state.activeTorneo === t.id ? 'rgba(59,130,246,0.05)' : 'var(--bg-card)'};">
+      <span style="font-size:1.2rem; margin-bottom:4px;">🏆</span>
+      <span style="font-size:0.75rem; font-weight:700; color:${state.activeTorneo === t.id ? 'var(--accent)' : 'var(--text-primary)'}">${escHtml(t.name)}</span>
+    </button>
+  `).join('');
 
-    if (top3.length > 0 && top3[0].matches > 0) {
-      c.innerHTML += `
-        <div style="margin-top: 10px;">
-          <p class="section-title">🔥 Mejores Rachas</p>
-          <div class="card" style="display:flex; justify-content:space-around; align-items:flex-end; padding: 24px 16px 20px;">
-            ${top3[1] ? renderPodium(top3[1], 2, 'silver', '60px') : '<div style="flex:1"></div>'}
-            ${renderPodium(top3[0], 1, 'gold', '85px')}
-            ${top3[2] ? renderPodium(top3[2], 3, 'bronze', '45px') : '<div style="flex:1"></div>'}
-          </div>
-        </div>
-      `;
-    }
+  c.innerHTML += `
+    <div style="margin-top:20px;">
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
+        <p class="section-title" style="margin:0;">Tus Torneos</p>
+        <button class="btn btn-icon btn-ghost btn-sm" onclick="openTorneoModal()" style="font-size:0.75rem; color:var(--accent);">Ver todos →</button>
+      </div>
+      <div style="display:flex; gap:10px;">
+        ${torneosHtml}
+      </div>
+    </div>
+  `;
 
-    // Ultima Jornada
-    const last = history[history.length - 1];
-    const date = new Date(last.date).toLocaleDateString('es-ES', { weekday: 'long', day: 'numeric', month: 'long' });
-    const names = last.attendees.map(id => playerById(id)?.name || '?').join(', ');
-    c.innerHTML += `<div style="margin-top: 10px;"><p class="section-title">⏱ Última Jornada</p><div class="card" onclick="openJornadaDetails('${last.id}')" style="cursor:pointer; transition: all 0.2s;"><div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px"><div><div style="font-size:0.85rem;font-weight:700;text-transform:capitalize">${date}</div><div style="font-size:0.78rem;color:var(--text-muted);margin-top:2px">${last.matches.length} partidos · ${last.attendees.length} jugadores</div><div style="font-size:0.78rem;color:var(--text-secondary);margin-top:5px;display:-webkit-box;-webkit-line-clamp:1;-webkit-box-orient:vertical;overflow:hidden">${names}</div></div><span class="badge badge-blue">👁 Ver</span></div></div></div>`;
-  }
+  // Elo Explanation
+  c.innerHTML += `
+    <div class="card" style="margin-top:24px; padding:16px; border-left:4px solid var(--amber);">
+      <div style="display:flex; align-items:center; gap:8px; margin-bottom:12px;">
+        <span style="font-size:1.4rem;">🏅</span>
+        <h3 style="font-size:1rem; font-weight:800; margin:0;">¿Cómo funciona el ELO?</h3>
+      </div>
+      <p style="font-size:0.85rem; color:var(--text-secondary); line-height:1.5; margin-bottom:12px;">
+        El nuevo ranking de RotaPádel se basa en puntos <strong>Elo</strong>. Todos empiezan con 1000 puntos.
+      </p>
+      <ul style="font-size:0.8rem; color:var(--text-secondary); padding-left:20px; margin:0; display:flex; flex-direction:column; gap:6px;">
+        <li>Ganarle a rivales con <strong>más Elo</strong> te da más puntos.</li>
+        <li>Ganar por <strong>mucha diferencia de games</strong> aumenta tu ganancia de puntos.</li>
+        <li>Si pierdes contra alguien de menor nivel, tu Elo bajará drásticamente.</li>
+      </ul>
+      <button class="btn btn-ghost btn-full" onclick="navigate('stats')" style="margin-top:16px; font-size:0.85rem; color:var(--amber); background:rgba(245,158,11,0.1);">Ver Ranking Actual 🏆</button>
+    </div>
+  `;
 }
 
 function renderPodium(player, position, medalClass, height) {
@@ -474,86 +484,72 @@ function launchSession() {
 // ═══ ACTIVE SESSION ════════════════════════════════════════════════════
 function renderActiveSession(c) {
   const s = state.session;
-  const m = s.currentMatch; window._score1 = 0; window._score2 = 0;
-  const t1p1 = playerById(m.team1[0])?.name, t1p2 = playerById(m.team1[1])?.name, t2p1 = playerById(m.team2[0])?.name, t2p2 = playerById(m.team2[1])?.name;
-
-  let html = `<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px"><p class="section-title" style="margin:0">Jornada Activa</p><span class="badge badge-amber">Partido ${s.matchIndex}</span></div>`;
-
-  html += `
-  <div class="card" style="padding:20px 16px; margin-bottom:16px;">
-    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:24px">
-      <div style="flex:1;text-align:center">
-        <div class="score-team">${escHtml(t1p1)}<br>& ${escHtml(t1p2)}</div>
-        <div class="score-num" style="display:flex;align-items:center;justify-content:center;gap:6px; margin-top:12px;">
-          <button class="btn btn-icon btn-ghost" onclick="changeScore(1,-1)" style="width:32px;height:32px;font-size:1.3rem; background:var(--bg-input)">−</button>
-          <div id="score1" style="font-size:2.8rem;font-weight:900;width:40px;line-height:1;color:var(--text-primary)">0</div>
-          <button class="btn btn-icon btn-ghost" onclick="changeScore(1,1)" style="width:32px;height:32px;font-size:1.3rem;color:var(--green); background:var(--bg-input)">+</button>
-        </div>
-      </div>
-      <div class="score-vs" style="margin:0 4px; opacity:0.5; font-size:0.8rem;">VS</div>
-      <div style="flex:1;text-align:center">
-        <div class="score-team">${escHtml(t2p1)}<br>& ${escHtml(t2p2)}</div>
-        <div class="score-num" style="display:flex;align-items:center;justify-content:center;gap:6px; margin-top:12px;">
-          <button class="btn btn-icon btn-ghost" onclick="changeScore(2,-1)" style="width:32px;height:32px;font-size:1.3rem; background:var(--bg-input)">−</button>
-          <div id="score2" style="font-size:2.8rem;font-weight:900;width:40px;line-height:1;color:var(--text-primary)">0</div>
-          <button class="btn btn-icon btn-ghost" onclick="changeScore(2,1)" style="width:32px;height:32px;font-size:1.3rem;color:var(--green); background:var(--bg-input)">+</button>
-        </div>
-      </div>
-    </div>
-    
-    <div class="gap-8">
-      <button class="btn btn-green btn-full" id="btn-save-match" onclick="saveMatchResult()" style="padding:14px; font-size:1rem; box-shadow:0 4px 12px rgba(16,185,129,0.25);">✅ Siguiente Partido</button>
-      <div style="display:flex; gap:8px;">
-        <button class="btn btn-ghost btn-full" onclick="skipMatch()" style="font-size:0.85rem">⏭ Saltar (banco)</button>
-        <button class="btn btn-ghost btn-full" onclick="promptFinishSession()" style="font-size:0.85rem;color:var(--amber)">🏁 Terminar</button>
-      </div>
-    </div>
+  
+  let html = `<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+    <p class="section-title" style="margin:0">Tablero de Fixture</p>
+    <span class="badge badge-amber">${s.fixture.length} Partidos</span>
   </div>`;
-
-  html += renderPlayCountBar(s);
-
-  const playedMatches = s.matches.filter(mx => !mx.skipped);
-  if (playedMatches.length > 0) {
-    const rh = playedMatches.slice(-3).reverse().map(mx => {
-      const won1 = mx.score1 > mx.score2;
-      return `<div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid var(--border);font-size:0.8rem">
-        <div style="display:flex; flex-direction:column; gap:4px;">
-          <span style="${won1 ? 'font-weight:800;color:var(--text-primary)' : 'color:var(--text-secondary)'}">${playerById(mx.team1[0])?.name} & ${playerById(mx.team1[1])?.name}</span> 
-          <span style="${!won1 ? 'font-weight:800;color:var(--text-primary)' : 'color:var(--text-secondary)'}">${playerById(mx.team2[0])?.name} & ${playerById(mx.team2[1])?.name}</span>
-        </div>
-        <div style="display:flex; align-items:center; gap:8px;">
-          <div style="font-weight:900; font-size:1.1rem; background:var(--bg-input); padding:4px 10px; border-radius:6px; letter-spacing:2px; color:var(--accent-bright)">${mx.score1}-${mx.score2}</div>
-          <button class="btn btn-icon btn-ghost btn-sm" onclick="editActiveMatchScore('${mx.id}')" style="font-size:0.9rem; margin-left:4px;">✏️</button>
-        </div>
-      </div>`;
-    }).join('');
-    html += `<div class="card" style="margin-top:16px; padding:16px;"><p class="section-title" style="margin-bottom:12px; font-size:0.8rem;">⏱ Últimos Resultados</p>${rh}</div>`;
-  }
-
-  if (s.fixture && s.fixture.length > s.matchIndex) {
-    const upcoming = s.fixture.slice(s.matchIndex, s.matchIndex + 3);
-    const uh = upcoming.map((m, i) => {
-      const t1p1 = playerById(m.team1[0])?.name || '?', t1p2 = playerById(m.team1[1])?.name || '?';
-      const t2p1 = playerById(m.team2[0])?.name || '?', t2p2 = playerById(m.team2[1])?.name || '?';
-      return `<div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid var(--border);font-size:0.8rem">
-        <div style="font-weight:700; color:var(--accent); min-width:30px;">#${m.matchIndex}</div>
-        <div style="flex:1; text-align:right;">${escHtml(t1p1)}<br>${escHtml(t1p2)}</div>
-        <div style="margin:0 10px; font-size:0.7rem; color:var(--text-muted)">vs</div>
-        <div style="flex:1; text-align:left;">${escHtml(t2p1)}<br>${escHtml(t2p2)}</div>
-        <button class="btn btn-ghost btn-sm btn-icon" onclick="openUpcomingMatchEditor(${m.matchIndex - 1})" title="Editar cruce">✏️</button>
-      </div>`;
-    }).join('');
+  
+  html += `<div style="margin-bottom:16px;">
+    <p style="font-size:0.85rem; color:var(--text-secondary); line-height:1.4;">Ingresa los resultados a medida que terminan los partidos en las distintas canchas. Usa "Saltar" para omitir un partido.</p>
+  </div>`;
+  
+  const fh = s.fixture.map((m, i) => {
+    const t1p1 = playerById(m.team1[0])?.name || '?', t1p2 = playerById(m.team1[1])?.name || '?';
+    const t2p1 = playerById(m.team2[0])?.name || '?', t2p2 = playerById(m.team2[1])?.name || '?';
     
-    html += `<div class="card" style="margin-top:16px; padding:16px;">
-      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
-        <p class="section-title" style="margin:0; font-size:0.8rem;">📅 Próximos Partidos</p>
-        <span class="badge badge-blue" style="font-size:0.65rem">${s.fixture.length - s.matchIndex} restantes</span>
+    return `
+    <div class="card" style="padding:14px; margin-bottom:12px; position:relative; opacity: ${m.skipped ? '0.5' : '1'}; transition: opacity 0.2s;">
+      <div style="display:flex; justify-content:space-between; margin-bottom:12px; font-size:0.75rem;">
+        <strong style="color:var(--accent)">Partido ${i+1}</strong>
+        <label style="display:flex; align-items:center; gap:4px; cursor:pointer;">
+          <input type="checkbox" onchange="toggleFixtureSkip(${i})" ${m.skipped ? 'checked' : ''}>
+          <span>Saltar</span>
+        </label>
       </div>
-      ${uh}
-    </div>`;
-  }
+      <div style="display:flex; align-items:center; justify-content:space-between;">
+        <div style="flex:1; text-align:right; font-size:0.85rem; font-weight:600; line-height:1.3;">${escHtml(t1p1)}<br>${escHtml(t1p2)}</div>
+        
+        <div style="display:flex; align-items:center; gap:8px; margin:0 12px;">
+          <input type="number" class="input" style="width:48px; text-align:center; font-size:1.2rem; font-weight:800; padding:6px 0;" value="${m.score1 || 0}" min="0" onchange="updateFixtureScore(${i}, 1, this.value)" ${m.skipped ? 'disabled' : ''}>
+          <span style="color:var(--text-muted); font-size:0.8rem;">vs</span>
+          <input type="number" class="input" style="width:48px; text-align:center; font-size:1.2rem; font-weight:800; padding:6px 0;" value="${m.score2 || 0}" min="0" onchange="updateFixtureScore(${i}, 2, this.value)" ${m.skipped ? 'disabled' : ''}>
+        </div>
 
+        <div style="flex:1; text-align:left; font-size:0.85rem; font-weight:600; line-height:1.3;">${escHtml(t2p1)}<br>${escHtml(t2p2)}</div>
+      </div>
+      <div style="display:flex; justify-content:center; margin-top:12px;">
+        <button class="btn btn-ghost btn-sm" onclick="openUpcomingMatchEditor(${i})" style="font-size:0.75rem; padding:4px 8px;">✏️ Editar Jugadores</button>
+      </div>
+    </div>`;
+  }).join('');
+  
+  html += fh;
+  
+  html += `
+  <div style="margin-top:24px; margin-bottom: 24px;">
+    <button class="btn btn-green btn-full" onclick="promptFinishSession()" style="padding:16px; font-size:1.1rem; font-weight:900; box-shadow:0 6px 20px rgba(16,185,129,0.3);">✅ Guardar y Calcular ELO</button>
+    <button class="btn btn-ghost btn-full" onclick="confirmCancelSession()" style="margin-top:8px; color:var(--red);">Cancelar Jornada</button>
+  </div>`;
+  
   c.innerHTML = html;
+}
+
+function updateFixtureScore(idx, team, val) {
+  const v = parseInt(val) || 0;
+  if (state.session && state.session.fixture[idx]) {
+    if (team === 1) state.session.fixture[idx].score1 = v;
+    else state.session.fixture[idx].score2 = v;
+    CACHE.set(CK.SESSION, state.session);
+  }
+}
+
+function toggleFixtureSkip(idx) {
+  if (state.session && state.session.fixture[idx]) {
+    state.session.fixture[idx].skipped = !state.session.fixture[idx].skipped;
+    CACHE.set(CK.SESSION, state.session);
+    renderPage();
+  }
 }
 
 function openUpcomingMatchEditor(idx) {
@@ -574,7 +570,7 @@ function openUpcomingMatchEditor(idx) {
     <div class="modal-handle"></div>
     <p class="modal-title">✏️ Modificar Partido #${idx + 1}</p>
     <div class="gap-12" id="upcoming-edit-container">
-      <div style="display:flex; gap:12px;">
+        <div style="display:flex; gap:12px;">
         <div style="flex:1; display:flex; flex-direction:column; gap:8px;">
           ${renderSelect(m.team1[0])}
           ${renderSelect(m.team1[1])}
@@ -625,135 +621,64 @@ function renderPlayCountBar(s) {
   return `<div class="card"><p class="section-title" style="margin-bottom:10px">Partidos jugados</p><div class="gap-8" style="max-height: 200px; overflow-y: auto; padding-right: 6px;">${items}</div></div>`;
 }
 
-function changeScore(team, delta) {
-  const maxScore = state.session?.gamesFormat || 99;
-  let s1 = window._score1 || 0;
-  let s2 = window._score2 || 0;
-  if (team === 1) {
-    const n = s1 + delta; if (n >= 0 && n + s2 <= maxScore) s1 = n;
-  } else {
-    const n = s2 + delta; if (n >= 0 && s1 + n <= maxScore) s2 = n;
-  }
-  window._score1 = s1; window._score2 = s2;
-  const e1 = document.getElementById('score1'); if (e1) e1.textContent = s1;
-  const e2 = document.getElementById('score2'); if (e2) e2.textContent = s2;
-}
 
-async function saveMatchResult() {
-  const s1 = window._score1 || 0, s2 = window._score2 || 0;
-  if (s1 === 0 && s2 === 0) { showToast('⚠️ Ingresa al menos un resultado'); return; }
-  const s = state.session; const m = s.currentMatch;
-  const btn = document.getElementById('btn-save-match');
-  if (btn) { btn.disabled = true; btn.innerHTML = '<span class="spinner-sm"></span> Procesando…'; }
-  const partido = { id: uid(), id_jornada: s.id, team1_p1: m.team1[0], team1_p2: m.team1[1], team2_p1: m.team2[0], team2_p2: m.team2[1], score1: s1, score2: s2, skipped: false, match_index: s.matchIndex, team1: m.team1, team2: m.team2 };
-  
-  s.matches.push(partido); 
-  
-  // Update Fixture progression
-  s.fixture = s.fixture || [];
-  if (s.fixture.length > s.matchIndex) {
-    s.currentMatch = s.fixture[s.matchIndex];
-  } else {
-    // Si se pasan de la cantidad generada, generamos uno on the fly
-    s.currentMatch = generateNextMatch(s.attendees, s.matches);
-    s.currentMatch.matchIndex = s.matchIndex + 1;
-  }
-  s.matchIndex++;
-  
-  CACHE.set(CK.SESSION, s);
-  withSync(() => API.savePartido(partido)); // fire-and-forget
-  renderPage(); showToast('✅ Partido guardado. ¡Al siguiente!');
-}
-
-function skipMatch() {
-  const s = state.session; const m = s.currentMatch;
-  const partido = { id: uid(), id_jornada: s.id, team1_p1: m.team1[0], team1_p2: m.team1[1], team2_p1: m.team2[0], team2_p2: m.team2[1], score1: 0, score2: 0, skipped: true, match_index: s.matchIndex, team1: m.team1, team2: m.team2 };
-  s.matches.push(partido); 
-  
-  s.fixture = s.fixture || [];
-  if (s.fixture.length > s.matchIndex) {
-    s.currentMatch = s.fixture[s.matchIndex];
-  } else {
-    s.currentMatch = generateNextMatch(s.attendees, s.matches);
-    s.currentMatch.matchIndex = s.matchIndex + 1;
-  }
-  s.matchIndex++;
-  
-  CACHE.set(CK.SESSION, s);
-  renderPage(); showToast('⏭ Partido saltado');
-}
-
-function editActiveMatchScore(mId) {
-  const s = state.session; if (!s) return;
-  const m = s.matches.find(x => x.id === mId); if (!m) return;
-
-  const t1p1 = playerById(m.team1[0])?.name || '?', t1p2 = playerById(m.team1[1])?.name || '?';
-  const t2p1 = playerById(m.team2[0])?.name || '?', t2p2 = playerById(m.team2[1])?.name || '?';
-
-  openModal(`
-    <div class="modal-handle"></div>
-    <p class="modal-title">✏️ Modificar Resultado</p>
-    <p style="font-size:0.85rem;color:var(--text-secondary);margin-bottom:24px">Corrigiendo el partido de la jornada activa.</p>
-    
-    <div class="score-row" style="margin-bottom:30px">
-      <div>
-        <div class="score-team" style="margin-bottom:12px">${escHtml(t1p1)}<br>& ${escHtml(t1p2)}</div>
-        <div class="score-num">
-          <input type="number" id="edit-active-score1" class="input" style="width:70px;text-align:center;font-size:1.6rem;font-weight:900" value="${m.score1}" min="0" max="${s.gamesFormat || 99}">
-        </div>
-      </div>
-      <div class="score-vs" style="margin-top:20px">VS</div>
-      <div>
-        <div class="score-team" style="margin-bottom:12px">${escHtml(t2p1)}<br>& ${escHtml(t2p2)}</div>
-        <div class="score-num">
-          <input type="number" id="edit-active-score2" class="input" style="width:70px;text-align:center;font-size:1.6rem;font-weight:900" value="${m.score2}" min="0" max="${s.gamesFormat || 99}">
-        </div>
-      </div>
-    </div>
-    
-    <div class="gap-8">
-      <button class="btn btn-primary btn-full" id="btn-save-active-edit" onclick="saveActiveMatchScore('${mId}')">✓ Guardar Cambios</button>
-      <button class="btn btn-ghost btn-full" onclick="closeModal()">Cancelar</button>
-    </div>
-  `);
-}
-
-async function saveActiveMatchScore(mId) {
-  const s1 = parseInt(document.getElementById('edit-active-score1').value) || 0;
-  const s2 = parseInt(document.getElementById('edit-active-score2').value) || 0;
-
-  const s = state.session; if (!s) return;
-  const m = s.matches.find(x => x.id === mId); if (!m) return;
-
-  const btn = document.getElementById('btn-save-active-edit'); if (btn) { btn.disabled = true; btn.innerHTML = '<span class="spinner-sm"></span> Guardando…'; }
-
-  const updatedMatch = { ...m, score1: s1, score2: s2 };
-
-  m.score1 = s1; m.score2 = s2;
-  CACHE.set(CK.SESSION, s);
-  
-  withSync(() => API.savePartido(updatedMatch));
-  
-  closeModal();
-  renderPage();
-  showToast('✅ Partido actualizado');
-}
 
 function promptFinishSession() {
-  openModal(`<div class="modal-handle"></div><p class="modal-title">🏁 ¿Terminar la jornada?</p><p style="font-size:0.9rem;color:var(--text-secondary);margin-bottom:20px">Se registrarán ${state.session.matches.length} partidos en el archivo histórico.</p><div class="gap-8"><button class="btn btn-amber btn-full" id="btn-confirm-finish" onclick="finishSession()">🏆 Sí, terminar</button><button class="btn btn-ghost btn-full" onclick="closeModal()">Seguir jugando</button></div>`);
+  const played = state.session.fixture.filter(m => !m.skipped && (m.score1 > 0 || m.score2 > 0));
+  openModal(`
+    <div class="modal-handle"></div>
+    <p class="modal-title">🏁 ¿Terminar la jornada?</p>
+    <p style="font-size:0.9rem;color:var(--text-secondary);margin-bottom:20px">Se registrarán <strong>${played.length} partidos</strong> en tu historial.</p>
+    <div class="gap-8">
+      <button class="btn btn-green btn-full" id="btn-confirm-finish" onclick="finishSession()">🏆 Sí, Guardar Todo</button>
+      <button class="btn btn-ghost btn-full" onclick="closeModal()">Seguir editando</button>
+    </div>
+  `);
 }
 
 async function finishSession() {
   const btn = document.getElementById('btn-confirm-finish');
   if (btn) { btn.disabled = true; btn.innerHTML = '<span class="spinner-sm"></span> Finalizando…'; }
   const s = state.session;
+  
+  // Procesar partidos del fixture
+  s.matches = [];
+  let index = 1;
+  const played = s.fixture.filter(m => !m.skipped && (m.score1 > 0 || m.score2 > 0));
+  
+  for (const m of played) {
+    const partido = {
+      id: uid(),
+      id_jornada: s.id,
+      team1_p1: m.team1[0], team1_p2: m.team1[1],
+      team2_p1: m.team2[0], team2_p2: m.team2[1],
+      score1: m.score1, score2: m.score2,
+      skipped: false,
+      match_index: index++,
+      team1: m.team1, team2: m.team2
+    };
+    s.matches.push(partido);
+  }
+
   setSyncStatus('syncing');
-  try { await API.saveJornada({ id: s.id, id_torneo: state.activeTorneo, fecha: s.date, games_format: s.gamesFormat, attendees: s.attendees, finished: true }); setSyncStatus('idle'); }
-  catch (err) { setSyncStatus('error'); showToast('⚠️ Error al guardar: ' + err.message, 4000); }
+  try {
+    const matchPromises = s.matches.map(p => API.savePartido(p));
+    await Promise.all(matchPromises);
+    
+    await API.saveJornada({ id: s.id, id_torneo: state.activeTorneo, fecha: s.date, games_format: s.gamesFormat, attendees: s.attendees, finished: true });
+    setSyncStatus('idle');
+  } catch (err) {
+    setSyncStatus('error');
+    showToast('⚠️ Datos guardados localmente (Error: ' + err.message + ')', 4000);
+  }
+  
   state.history.push({ id: s.id, id_torneo: state.activeTorneo || 'torneo_inicial', date: s.date, gamesFormat: s.gamesFormat, attendees: s.attendees, matches: s.matches });
   CACHE.set(CK.HISTORY, state.history);
   s.finished = true; CACHE.set(CK.SESSION, s);
-  closeModal(); renderPage(); showToast('🏆 ¡Jornada terminada!');
+  
+  closeModal();
+  renderPage();
+  showToast('🏆 ¡Jornada finalizada y ELO calculado!');
 }
 
 function renderSessionEnd(c) {
