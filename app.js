@@ -396,6 +396,15 @@ function renderNoSession(c) {
       </p>
       
       <div id="elo-examples" style="display:none; background:var(--bg-card); border-radius:var(--radius-sm); border:1px solid var(--border); padding:12px; margin-top:12px;">
+        <p style="font-size:0.8rem; font-weight:700; color:var(--text-primary); margin-bottom:8px;">Fórmula Matemática Exacta:</p>
+        <div style="font-size:0.75rem; color:var(--text-secondary); background:var(--bg-body); padding:8px; border-radius:6px; margin-bottom:12px; font-family:monospace; line-height:1.4;">
+<span style="color:var(--accent);">Puntos Extra (Margen de Victoria):</span>
+M = log(Diferencia de Games + 1) + 1
+
+<span style="color:var(--accent);">Variación de Elo (Δ):</span>
+Δ = 32 × M × (Resultado Real - Probabilidad Esperada)
+        </div>
+        
         <p style="font-size:0.8rem; font-weight:700; color:var(--text-primary); margin-bottom:8px;">Ejemplos Matemáticos (Base 1000):</p>
         
         <div style="display:flex; flex-direction:column; gap:8px;">
@@ -1238,10 +1247,6 @@ function renderStatTab(c, tab, stats) {
     let topPlayers = stats.ranking;
     if (state.chartFilter === 'top5') topPlayers = topPlayers.slice(0, 5);
     else if (state.chartFilter === 'top3') topPlayers = topPlayers.slice(0, 3);
-    else if (state.chartFilter === 'rivals' && stats.pairs.length > 0) {
-      const pIds = stats.pairs[0].ids || [];
-      topPlayers = topPlayers.filter(p => pIds.includes(p.id));
-    }
 
     if (topPlayers.length === 0 || !topPlayers[0].eloHistory) {
       c.innerHTML = '<div class="empty-state"><div class="empty-icon">📈</div><div class="empty-title">No hay historial suficiente</div></div>'; return;
@@ -1300,7 +1305,6 @@ function renderStatTab(c, tab, stats) {
           <button style="${btnStyle('all')}" onclick="setChartFilter('all')">Todos</button>
           <button style="${btnStyle('top5')}" onclick="setChartFilter('top5')">Top 5</button>
           <button style="${btnStyle('top3')}" onclick="setChartFilter('top3')">Top 3</button>
-          <button style="${btnStyle('rivals')}" onclick="setChartFilter('rivals')">Rivalidad</button>
         </div>
       </div>
       <div class="card" style="padding: 16px; overflow-x: auto; margin-top:8px;">
