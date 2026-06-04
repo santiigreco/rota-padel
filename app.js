@@ -1232,14 +1232,27 @@ function renderStatTab(c, tab, stats) {
     if (!stats.pairs.length) { c.innerHTML = '<div class="empty-state"><div class="empty-icon">👥</div><div class="empty-title">Sin datos de parejas</div></div>'; return; }
     c.innerHTML = `<p class="section-title">👥 Mejores Parejas</p>` + stats.pairs.slice(0, 10).map((pair, i) => `<div class="pair-card"><div style="display:flex;align-items:center;justify-content:space-between;gap:8px"><div class="pair-names">${escHtml(pair.names)}</div>${i === 0 ? '<span class="badge badge-purple">🏆 Mejor Pareja</span>' : ''}</div><div class="pair-stats-row"><div class="pair-stat">Juntos: <strong>${pair.total}</strong></div><div class="pair-stat">Victorias: <strong>${pair.wins}</strong></div><div class="pair-stat">Win rate: <strong>${pair.total > 0 ? Math.round((pair.wins / pair.total) * 100) : 0}%</strong></div></div><div class="progress-wrap" style="margin-top:8px"><div class="progress-bar" style="width:${pair.total > 0 ? Math.round((pair.wins / pair.total) * 100) : 0}%;background:linear-gradient(90deg,var(--purple),var(--accent))"></div></div></div>`).join('');
   } else if (tab === 'chart') {
-    const topPlayers = stats.ranking; // Mostrar TODOS los jugadores
+    state.chartFilter = state.chartFilter || 'all';
+    state.chartHidden = state.chartHidden || {};
+
+    let topPlayers = stats.ranking;
+    if (state.chartFilter === 'top5') topPlayers = topPlayers.slice(0, 5);
+    else if (state.chartFilter === 'top3') topPlayers = topPlayers.slice(0, 3);
+    else if (state.chartFilter === 'rivals' && stats.pairs.length > 0) {
+      const pIds = stats.pairs[0].ids || [];
+      topPlayers = topPlayers.filter(p => pIds.includes(p.id));
+    }
+
     if (topPlayers.length === 0 || !topPlayers[0].eloHistory) {
       c.innerHTML = '<div class="empty-state"><div class="empty-icon">📈</div><div class="empty-title">No hay historial suficiente</div></div>'; return;
     }
     
-    // Calcular max y min
+    // Calcular max y min SOLO de los jugadores visibles
     let maxElo = 1000, minElo = 1000, maxIdx = 1;
+    let hasVisible = false;
     topPlayers.forEach(p => {
+      if (state.chartHidden[p.id]) return;
+      hasVisible = true;
       p.eloHistory.forEach((h, idx) => {
         if (h.elo > maxElo) maxElo = h.elo;
         if (h.elo < minElo) minElo = h.elo;
@@ -1247,14 +1260,14 @@ function renderStatTab(c, tab, stats) {
       });
     });
     
-    // Dar margen al grafico
+    if (!hasVisible) { maxElo = 1010; minElo = 990; }
     maxElo = Math.ceil(maxElo + 20); minElo = Math.floor(minElo - 20);
     const range = maxElo - minElo;
     
     const w = 300, h = 180;
     
     const lines = topPlayers.map((p, i) => {
-      if (p.eloHistory.length <= 1) return '';
+      if (state.chartHidden[p.id] || p.eloHistory.length <= 1) return '';
       const points = p.eloHistory.map((hist, idx) => {
         const x = (idx / maxIdx) * w;
         const y = h - (((hist.elo - minElo) / range) * h);
@@ -1272,15 +1285,25 @@ function renderStatTab(c, tab, stats) {
     }).join('');
     
     const legend = topPlayers.map(p => `
-      <div style="display:flex; align-items:center; gap:6px; font-size:0.75rem; color:var(--text-secondary);">
+      <div onclick="toggleChartPlayer('${p.id}')" style="display:flex; align-items:center; gap:6px; font-size:0.75rem; color:var(--text-secondary); cursor:pointer; opacity:${state.chartHidden[p.id] ? '0.4' : '1'}; transition:0.2s;">
         <div style="width:10px; height:10px; border-radius:50%; background:${p.color};"></div>
         ${escHtml(p.name)}
       </div>
     `).join('');
 
+    const btnStyle = (mode) => `font-size:0.75rem; padding:4px 8px; border-radius:4px; cursor:pointer; border:1px solid var(--border); background:${state.chartFilter === mode ? 'var(--accent)' : 'var(--bg-card)'}; color:${state.chartFilter === mode ? 'white' : 'var(--text-primary)'};`;
+
     c.innerHTML = `
-      <p class="section-title">📈 Evolución ELO</p>
-      <div class="card" style="padding: 16px; overflow-x: auto;">
+      <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px;">
+        <p class="section-title" style="margin:0;">📈 Evolución ELO</p>
+        <div style="display:flex; gap:6px;">
+          <button style="${btnStyle('all')}" onclick="setChartFilter('all')">Todos</button>
+          <button style="${btnStyle('top5')}" onclick="setChartFilter('top5')">Top 5</button>
+          <button style="${btnStyle('top3')}" onclick="setChartFilter('top3')">Top 3</button>
+          <button style="${btnStyle('rivals')}" onclick="setChartFilter('rivals')">Rivalidad</button>
+        </div>
+      </div>
+      <div class="card" style="padding: 16px; overflow-x: auto; margin-top:8px;">
         <svg viewBox="0 -10 ${w} ${h + 20}" style="width:100%; height:auto; overflow:visible;">
           <!-- Grid Lines -->
           <line x1="0" y1="0" x2="${w}" y2="0" stroke="var(--border)" stroke-dasharray="4" />
@@ -1293,23 +1316,36 @@ function renderStatTab(c, tab, stats) {
           <text x="-5" y="${h + 4}" font-size="10" fill="var(--text-muted)" text-anchor="end">${minElo}</text>
           
           <!-- X-Axis Labels (Dates) -->
-          ${topPlayers[0].eloHistory.map((hist, idx) => {
+          ${topPlayers.length > 0 && topPlayers[0].eloHistory ? topPlayers[0].eloHistory.map((hist, idx) => {
             if (idx === 0 || idx === maxIdx || maxIdx < 4 || (idx % Math.floor(maxIdx/3) === 0)) {
               const x = (idx / maxIdx) * w;
-              let dLabel = hist.date === 'Inicio' ? 'Inicio' : new Date(hist.date).toLocaleDateString('es-ES', { day: 'numeric', month: 'short' });
+              let dLabel = hist.date === 'Inicio' ? 'Inicio' : ('J' + idx);
               return `<text x="${x}" y="${h + 16}" font-size="8" fill="var(--text-muted)" text-anchor="middle">${dLabel}</text>`;
             }
             return '';
-          }).join('')}
+          }).join('') : ''}
           
           ${lines}
         </svg>
-        <div style="display:flex; flex-wrap:wrap; gap:12px; margin-top:20px; justify-content:center;">
+        <div style="display:flex; flex-wrap:wrap; gap:12px; margin-top:20px; justify-content:center; padding-top:12px; border-top:1px dashed var(--border);">
           ${legend}
         </div>
       </div>
     `;
   }
+}
+
+function setChartFilter(mode) {
+  state.chartFilter = mode;
+  state.chartHidden = {};
+  const c = document.getElementById('stats-tab-content');
+  if (c) renderStatTab(c, 'chart', computeGlobalStats());
+}
+
+function toggleChartPlayer(id) {
+  state.chartHidden[id] = !state.chartHidden[id];
+  const c = document.getElementById('stats-tab-content');
+  if (c) renderStatTab(c, 'chart', computeGlobalStats());
 }
 
 function getActiveHistory() {
@@ -1381,7 +1417,7 @@ function computeGlobalStats() {
 
       const proc = (team, won) => {
         const [a, b] = [...team].sort(); const key = a + '_' + b;
-        if (!pairs[key]) { const pa = playerById(a), pb = playerById(b); pairs[key] = { wins: 0, total: 0, names: [pa?.name || '?', pb?.name || '?'].join(' & ') }; }
+        if (!pairs[key]) { const pa = playerById(a), pb = playerById(b); pairs[key] = { ids: [a, b], wins: 0, total: 0, names: [pa?.name || '?', pb?.name || '?'].join(' & ') }; }
         pairs[key].total++; if (won) pairs[key].wins++;
       };
       proc(m.team1, t1w); proc(m.team2, t2w);
