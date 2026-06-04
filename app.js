@@ -74,7 +74,9 @@ function transformApiData({ torneos = [], jugadores = [], jornadas = [], partido
     
     // Fallback date
     let rawDate = j.fecha || j.date || j.created_at;
-    if (!rawDate || rawDate === 'undefined') rawDate = new Date().toISOString();
+    if (!rawDate || rawDate === 'undefined' || isNaN(new Date(rawDate).getTime())) {
+      rawDate = new Date().toISOString();
+    }
 
     const jMatches = partidos.filter(p => String(p.id_jornada) === String(j.id)).map(p => ({
       id: String(p.id), team1: [String(p.team1_p1), String(p.team1_p2)], team2: [String(p.team2_p1), String(p.team2_p2)],
@@ -1230,7 +1232,7 @@ function renderStatTab(c, tab, stats) {
     if (!stats.pairs.length) { c.innerHTML = '<div class="empty-state"><div class="empty-icon">👥</div><div class="empty-title">Sin datos de parejas</div></div>'; return; }
     c.innerHTML = `<p class="section-title">👥 Mejores Parejas</p>` + stats.pairs.slice(0, 10).map((pair, i) => `<div class="pair-card"><div style="display:flex;align-items:center;justify-content:space-between;gap:8px"><div class="pair-names">${escHtml(pair.names)}</div>${i === 0 ? '<span class="badge badge-purple">🏆 Mejor Pareja</span>' : ''}</div><div class="pair-stats-row"><div class="pair-stat">Juntos: <strong>${pair.total}</strong></div><div class="pair-stat">Victorias: <strong>${pair.wins}</strong></div><div class="pair-stat">Win rate: <strong>${pair.total > 0 ? Math.round((pair.wins / pair.total) * 100) : 0}%</strong></div></div><div class="progress-wrap" style="margin-top:8px"><div class="progress-bar" style="width:${pair.total > 0 ? Math.round((pair.wins / pair.total) * 100) : 0}%;background:linear-gradient(90deg,var(--purple),var(--accent))"></div></div></div>`).join('');
   } else if (tab === 'chart') {
-    const topPlayers = stats.ranking.slice(0, 5); // Solo los mejores 5 para no saturar el grafico
+    const topPlayers = stats.ranking; // Mostrar TODOS los jugadores
     if (topPlayers.length === 0 || !topPlayers[0].eloHistory) {
       c.innerHTML = '<div class="empty-state"><div class="empty-icon">📈</div><div class="empty-title">No hay historial suficiente</div></div>'; return;
     }
@@ -1277,7 +1279,7 @@ function renderStatTab(c, tab, stats) {
     `).join('');
 
     c.innerHTML = `
-      <p class="section-title">📈 Evolución ELO (Top 5)</p>
+      <p class="section-title">📈 Evolución ELO</p>
       <div class="card" style="padding: 16px; overflow-x: auto;">
         <svg viewBox="0 -10 ${w} ${h + 20}" style="width:100%; height:auto; overflow:visible;">
           <!-- Grid Lines -->
