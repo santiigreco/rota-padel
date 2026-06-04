@@ -71,11 +71,16 @@ function transformApiData({ torneos = [], jugadores = [], jornadas = [], partido
   const players = jugadores.map(j => ({ id: String(j.id), name: String(j.nombre), color: String(j.color || '#3b82f6') }));
   const history = jornadas.map(j => {
     let att = []; try { att = typeof j.attendees === 'string' ? JSON.parse(j.attendees) : (j.attendees || []); } catch { }
-    
-    // Fallback date
+
+    // Fallback date: extraemos el timestamp del ID de la jornada
     let rawDate = j.fecha || j.date || j.created_at;
     if (!rawDate || rawDate === 'undefined' || isNaN(new Date(rawDate).getTime())) {
-      rawDate = new Date().toISOString();
+      const ts = parseInt(String(j.id).slice(0, -5), 36);
+      if (!isNaN(ts) && ts > 1600000000000) {
+        rawDate = new Date(ts).toISOString();
+      } else {
+        rawDate = new Date().toISOString();
+      }
     }
 
     const jMatches = partidos.filter(p => String(p.id_jornada) === String(j.id)).map(p => ({
@@ -97,8 +102,18 @@ function transformApiData({ torneos = [], jugadores = [], jornadas = [], partido
       att = [...set];
     }
 
+    let fmt = parseInt(j.games_format) || 4;
+    let maxScore = 4;
+    jMatches.forEach(m => {
+      if (m.score1 > maxScore) maxScore = m.score1;
+      if (m.score2 > maxScore) maxScore = m.score2;
+    });
+    
+    // Si el backend falló en leer games_format, inferimos a partir de los puntajes jugados.
+    const finalFmt = Math.max(fmt, maxScore);
+
     return {
-      id: String(j.id), id_torneo: String(j.id_torneo || 'torneo_inicial'), date: String(rawDate), gamesFormat: parseInt(j.games_format) || 4,
+      id: String(j.id), id_torneo: String(j.id_torneo || 'torneo_inicial'), date: String(rawDate), gamesFormat: finalFmt,
       attendees: att.map(String),
       matches: jMatches,
     };
@@ -650,7 +665,7 @@ function renderActiveSession(c) {
   }).join('');
 
   html += fh;
-  
+
   html += `
   <div style="margin-top:12px; display:flex; justify-content:center;">
     <button class="btn btn-ghost btn-sm" onclick="addMatchToFixture()" style="font-size:0.8rem; border:1px dashed var(--border); padding:8px 16px;">➕ Añadir otro partido</button>
@@ -1251,7 +1266,7 @@ function renderStatTab(c, tab, stats) {
     if (topPlayers.length === 0 || !topPlayers[0].eloHistory) {
       c.innerHTML = '<div class="empty-state"><div class="empty-icon">📈</div><div class="empty-title">No hay historial suficiente</div></div>'; return;
     }
-    
+
     // Calcular max y min SOLO de los jugadores visibles
     let maxElo = 1000, minElo = 1000, maxIdx = 1;
     let hasVisible = false;
@@ -1264,13 +1279,13 @@ function renderStatTab(c, tab, stats) {
         if (idx > maxIdx) maxIdx = idx;
       });
     });
-    
+
     if (!hasVisible) { maxElo = 1010; minElo = 990; }
     maxElo = Math.ceil(maxElo + 20); minElo = Math.floor(minElo - 20);
     const range = maxElo - minElo;
-    
+
     const w = 300, h = 180;
-    
+
     const lines = topPlayers.map((p, i) => {
       if (state.chartHidden[p.id] || p.eloHistory.length <= 1) return '';
       const points = p.eloHistory.map((hist, idx) => {
@@ -1278,17 +1293,17 @@ function renderStatTab(c, tab, stats) {
         const y = h - (((hist.elo - minElo) / range) * h);
         return `${x},${y}`;
       }).join(' ');
-      
+
       const lastHist = p.eloHistory[p.eloHistory.length - 1];
-      const lastX = ( (p.eloHistory.length - 1) / maxIdx ) * w;
+      const lastX = ((p.eloHistory.length - 1) / maxIdx) * w;
       const lastY = h - (((lastHist.elo - minElo) / range) * h);
-      
+
       return `
         <polyline points="${points}" fill="none" stroke="${p.color}" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" />
         <circle cx="${lastX}" cy="${lastY}" r="4" fill="${p.color}" stroke="#fff" stroke-width="1.5" />
       `;
     }).join('');
-    
+
     const legend = topPlayers.map(p => `
       <div onclick="toggleChartPlayer('${p.id}')" style="display:flex; align-items:center; gap:6px; font-size:0.75rem; color:var(--text-secondary); cursor:pointer; opacity:${state.chartHidden[p.id] ? '0.4' : '1'}; transition:0.2s;">
         <div style="width:10px; height:10px; border-radius:50%; background:${p.color};"></div>
@@ -1311,23 +1326,23 @@ function renderStatTab(c, tab, stats) {
         <svg viewBox="0 -10 ${w} ${h + 20}" style="width:100%; height:auto; overflow:visible;">
           <!-- Grid Lines -->
           <line x1="0" y1="0" x2="${w}" y2="0" stroke="var(--border)" stroke-dasharray="4" />
-          <line x1="0" y1="${h/2}" x2="${w}" y2="${h/2}" stroke="var(--border)" stroke-dasharray="4" />
+          <line x1="0" y1="${h / 2}" x2="${w}" y2="${h / 2}" stroke="var(--border)" stroke-dasharray="4" />
           <line x1="0" y1="${h}" x2="${w}" y2="${h}" stroke="var(--border)" stroke-dasharray="4" />
           
           <!-- Y-Axis Labels -->
           <text x="-5" y="4" font-size="10" fill="var(--text-muted)" text-anchor="end">${maxElo}</text>
-          <text x="-5" y="${h/2 + 4}" font-size="10" fill="var(--text-muted)" text-anchor="end">${Math.round((maxElo+minElo)/2)}</text>
+          <text x="-5" y="${h / 2 + 4}" font-size="10" fill="var(--text-muted)" text-anchor="end">${Math.round((maxElo + minElo) / 2)}</text>
           <text x="-5" y="${h + 4}" font-size="10" fill="var(--text-muted)" text-anchor="end">${minElo}</text>
           
           <!-- X-Axis Labels (Dates) -->
           ${topPlayers.length > 0 && topPlayers[0].eloHistory ? topPlayers[0].eloHistory.map((hist, idx) => {
-            if (idx === 0 || idx === maxIdx || maxIdx < 4 || (idx % Math.floor(maxIdx/3) === 0)) {
-              const x = (idx / maxIdx) * w;
-              let dLabel = hist.date === 'Inicio' ? 'Inicio' : ('J' + idx);
-              return `<text x="${x}" y="${h + 16}" font-size="8" fill="var(--text-muted)" text-anchor="middle">${dLabel}</text>`;
-            }
-            return '';
-          }).join('') : ''}
+      if (idx === 0 || idx === maxIdx || maxIdx < 4 || (idx % Math.floor(maxIdx / 3) === 0)) {
+        const x = (idx / maxIdx) * w;
+        let dLabel = hist.date === 'Inicio' ? 'Inicio' : ('J' + idx);
+        return `<text x="${x}" y="${h + 16}" font-size="8" fill="var(--text-muted)" text-anchor="middle">${dLabel}</text>`;
+      }
+      return '';
+    }).join('') : ''}
           
           ${lines}
         </svg>
@@ -1378,9 +1393,9 @@ function computeGlobalStats() {
       });
       att = [...attSet];
     }
-    for (const id of att) { 
-      if (!ps[id]) ps[id] = { wins: 0, matches: 0, games: 0, sessions: 0, elo: 1000, eloHistory: [{ date: 'Inicio', elo: 1000 }] }; 
-      ps[id].sessions++; 
+    for (const id of att) {
+      if (!ps[id]) ps[id] = { wins: 0, matches: 0, games: 0, sessions: 0, elo: 1000, eloHistory: [{ date: 'Inicio', elo: 1000 }] };
+      ps[id].sessions++;
     }
     const matches = [...session.matches].sort((a, b) => a.matchIndex - b.matchIndex);
 
@@ -1426,7 +1441,7 @@ function computeGlobalStats() {
       };
       proc(m.team1, t1w); proc(m.team2, t2w);
     }
-    
+
     // Al final de la jornada, guardar el Elo resultante para TODOS los jugadores,
     // incluso si estuvieron ausentes, para que su linea avance recta en el grafico.
     Object.keys(ps).forEach(id => {
