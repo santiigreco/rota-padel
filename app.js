@@ -71,15 +71,34 @@ function transformApiData({ torneos = [], jugadores = [], jornadas = [], partido
   const players = jugadores.map(j => ({ id: String(j.id), name: String(j.nombre), color: String(j.color || '#3b82f6') }));
   const history = jornadas.map(j => {
     let att = []; try { att = typeof j.attendees === 'string' ? JSON.parse(j.attendees) : (j.attendees || []); } catch { }
+    
+    // Fallback date
+    let rawDate = j.fecha || j.date || j.created_at;
+    if (!rawDate || rawDate === 'undefined') rawDate = new Date().toISOString();
+
+    const jMatches = partidos.filter(p => String(p.id_jornada) === String(j.id)).map(p => ({
+      id: String(p.id), team1: [String(p.team1_p1), String(p.team1_p2)], team2: [String(p.team2_p1), String(p.team2_p2)],
+      score1: parseInt(p.score1) || 0, score2: parseInt(p.score2) || 0,
+      skipped: p.skipped === true || String(p.skipped).toUpperCase() === 'TRUE',
+      matchIndex: parseInt(p.match_index) || 0,
+    }));
+
+    // Infer attendees if empty
+    if (!att || att.length === 0) {
+      const set = new Set();
+      jMatches.forEach(m => {
+        if (!m.skipped) {
+          m.team1.forEach(id => set.add(id));
+          m.team2.forEach(id => set.add(id));
+        }
+      });
+      att = [...set];
+    }
+
     return {
-      id: String(j.id), id_torneo: String(j.id_torneo || 'torneo_inicial'), date: String(j.fecha), gamesFormat: parseInt(j.games_format) || 4,
+      id: String(j.id), id_torneo: String(j.id_torneo || 'torneo_inicial'), date: String(rawDate), gamesFormat: parseInt(j.games_format) || 4,
       attendees: att.map(String),
-      matches: partidos.filter(p => String(p.id_jornada) === String(j.id)).map(p => ({
-        id: String(p.id), team1: [String(p.team1_p1), String(p.team1_p2)], team2: [String(p.team2_p1), String(p.team2_p2)],
-        score1: parseInt(p.score1) || 0, score2: parseInt(p.score2) || 0,
-        skipped: p.skipped === true || String(p.skipped).toUpperCase() === 'TRUE',
-        matchIndex: parseInt(p.match_index) || 0,
-      })),
+      matches: jMatches,
     };
   });
   return { parsedTorneos, players, history };
@@ -101,7 +120,7 @@ async function loadState() {
     setSyncStatus('syncing');
     const { parsedTorneos, players, history } = transformApiData(await API.getAll());
     state.torneos = parsedTorneos; state.players = players; state.history = history;
-    
+
     // Set active torneo if not set or invalid
     let active = CACHE.get(CK.ACTIVE_TORNEO, null);
     if (!active || !state.torneos.find(t => t.id === active)) {
@@ -159,7 +178,7 @@ async function createTorneo() {
   if (!name) { showToast('⚠️ Ingresa un nombre'); return; }
   const id = uid();
   const torneo = { id, nombre: name, created_at: new Date().toISOString() };
-  
+
   const { ok } = await withSync(() => API.saveTorneo(torneo));
   if (ok) {
     state.torneos.push({ id, name });
@@ -188,11 +207,11 @@ async function renameTorneo(id) {
   const t = state.torneos.find(x => x.id === id); if (!t) return;
   const name = document.getElementById('edit-torneo-name')?.value.trim();
   if (!name || name === t.name) { openTorneoModal(); return; }
-  
+
   const btn = event.target;
   const oldHtml = btn.innerHTML;
   btn.disabled = true; btn.innerHTML = '<span class="spinner-sm"></span> Guardando…';
-  
+
   const { ok } = await withSync(() => API.saveTorneo({ id, nombre: name }));
   if (ok) {
     t.name = name;
@@ -222,7 +241,7 @@ async function executeDeleteTorneo(id) {
   const btn = event.target;
   const oldHtml = btn.innerHTML;
   btn.disabled = true; btn.innerHTML = '<span class="spinner-sm"></span> Eliminando…';
-  
+
   const { ok } = await withSync(() => API.deleteTorneo(id));
   if (ok) {
     state.torneos = state.torneos.filter(x => x.id !== id);
@@ -255,11 +274,11 @@ function navigate(tab) {
 function updateHeader() {
   const actions = document.getElementById('header-actions'); actions.innerHTML = '';
   const title = document.getElementById('header-title');
-  
+
   if (state.currentTab === 'play') {
     const tName = state.torneos.find(t => t.id === state.activeTorneo)?.name || 'RotaPádel';
     title.innerHTML = `<span style="cursor:pointer; display:flex; align-items:center; gap:4px;" onclick="openTorneoModal()">${escHtml(tName)} <span style="font-size:0.7rem; opacity:0.7">▼</span></span>`;
-    
+
     // Novedades Button
     const btnNov = document.createElement('button'); btnNov.className = 'btn btn-sm btn-ghost btn-icon'; btnNov.innerHTML = '🔔'; btnNov.title = 'Novedades v2.0'; btnNov.style.cssText = 'padding:7px;font-size:1.1rem;'; btnNov.onclick = openNovedadesModal; actions.appendChild(btnNov);
 
@@ -492,10 +511,10 @@ function updateMatchesRange(val) {
 function previewFixture(attendees) {
   const fmt = parseInt(document.getElementById('games-range')?.value) || 4;
   const count = parseInt(document.getElementById('matches-range')?.value) || 3;
-  
+
   // Randomize start to add variety to first match
   const sh = [...attendees].sort(() => Math.random() - 0.5);
-  
+
   let fixture = [];
   for (let i = 0; i < count; i++) {
     const next = generateNextMatch(sh, fixture);
@@ -503,7 +522,7 @@ function previewFixture(attendees) {
     next.score1 = 0; next.score2 = 0; next.skipped = false;
     fixture.push(next);
   }
-  
+
   window._tempFixture = fixture;
   window._tempFmt = fmt;
   window._tempAtt = sh;
@@ -513,13 +532,13 @@ function previewFixture(attendees) {
 
 function renderFixturePreview() {
   const fixture = window._tempFixture;
-  
+
   const list = fixture.map((m, i) => {
     const t1p1 = playerById(m.team1[0])?.name || '?', t1p2 = playerById(m.team1[1])?.name || '?';
     const t2p1 = playerById(m.team2[0])?.name || '?', t2p2 = playerById(m.team2[1])?.name || '?';
     return `
       <div class="card" style="padding:12px; margin-bottom:8px;">
-        <div style="font-size:0.75rem; color:var(--accent); font-weight:700; margin-bottom:6px;">Partido ${i+1}</div>
+        <div style="font-size:0.75rem; color:var(--accent); font-weight:700; margin-bottom:6px;">Partido ${i + 1}</div>
         <div style="display:flex; justify-content:space-between; font-size:0.85rem; font-weight:600;">
           <div style="flex:1; text-align:right;">${escHtml(t1p1)} <br> ${escHtml(t1p2)}</div>
           <div style="margin:0 12px; color:var(--text-muted); display:flex; align-items:center;">vs</div>
@@ -558,45 +577,45 @@ function launchSession() {
   const fixture = window._tempFixture;
   const fmt = window._tempFmt;
   const attendees = window._tempAtt;
-  
-  state.session = { 
-    id: uid(), 
-    date: new Date().toISOString(), 
-    attendees, 
-    gamesFormat: fmt, 
-    matches: [], 
+
+  state.session = {
+    id: uid(),
+    date: new Date().toISOString(),
+    attendees,
+    gamesFormat: fmt,
+    matches: [],
     fixture: fixture,
-    currentMatch: fixture[0], 
-    matchIndex: 1, 
-    finished: false 
+    currentMatch: fixture[0],
+    matchIndex: 1,
+    finished: false
   };
-  CACHE.set(CK.SESSION, state.session); 
-  closeModal(); 
-  renderPage(); 
+  CACHE.set(CK.SESSION, state.session);
+  closeModal();
+  renderPage();
   showToast('🎾 ¡Jornada iniciada!');
 }
 
 // ═══ ACTIVE SESSION ════════════════════════════════════════════════════
 function renderActiveSession(c) {
   const s = state.session;
-  
+
   let html = `<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
     <p class="section-title" style="margin:0">Tablero de Fixture</p>
     <span class="badge badge-amber">${s.fixture.length} Partidos</span>
   </div>`;
-  
+
   html += `<div style="margin-bottom:16px;">
     <p style="font-size:0.85rem; color:var(--text-secondary); line-height:1.4;">Ingresa los resultados a medida que terminan los partidos en las distintas canchas. Usa "Saltar" para omitir un partido.</p>
   </div>`;
-  
+
   const fh = s.fixture.map((m, i) => {
     const t1p1 = playerById(m.team1[0])?.name || '?', t1p2 = playerById(m.team1[1])?.name || '?';
     const t2p1 = playerById(m.team2[0])?.name || '?', t2p2 = playerById(m.team2[1])?.name || '?';
-    
+
     return `
     <div class="card" style="padding:14px; margin-bottom:12px; position:relative; opacity: ${m.skipped ? '0.5' : '1'}; transition: opacity 0.2s;">
       <div style="display:flex; justify-content:space-between; margin-bottom:12px; font-size:0.75rem;">
-        <strong style="color:var(--accent)">Partido ${i+1}</strong>
+        <strong style="color:var(--accent)">Partido ${i + 1}</strong>
         <label style="display:flex; align-items:center; gap:4px; cursor:pointer;">
           <input type="checkbox" onchange="toggleFixtureSkip(${i})" ${m.skipped ? 'checked' : ''}>
           <span>Saltar</span>
@@ -618,16 +637,34 @@ function renderActiveSession(c) {
       </div>
     </div>`;
   }).join('');
-  
+
   html += fh;
   
+  html += `
+  <div style="margin-top:12px; display:flex; justify-content:center;">
+    <button class="btn btn-ghost btn-sm" onclick="addMatchToFixture()" style="font-size:0.8rem; border:1px dashed var(--border); padding:8px 16px;">➕ Añadir otro partido</button>
+  </div>`;
+
   html += `
   <div style="margin-top:24px; margin-bottom: 24px;">
     <button class="btn btn-green btn-full" onclick="promptFinishSession()" style="padding:16px; font-size:1.1rem; font-weight:900; box-shadow:0 6px 20px rgba(16,185,129,0.3);">✅ Guardar y Calcular ELO</button>
     <button class="btn btn-ghost btn-full" onclick="confirmCancelSession()" style="margin-top:8px; color:var(--red);">Cancelar Jornada</button>
   </div>`;
-  
+
   c.innerHTML = html;
+}
+
+function addMatchToFixture() {
+  const s = state.session;
+  if (!s) return;
+  // Use the history of the current fixture to avoid repeating recent matches
+  const next = generateNextMatch(s.attendees, s.fixture);
+  next.matchIndex = s.fixture.length + 1;
+  next.score1 = 0; next.score2 = 0; next.skipped = false;
+  s.fixture.push(next);
+  CACHE.set(CK.SESSION, s);
+  renderPage();
+  showToast('🎾 Nuevo partido añadido al tablero');
 }
 
 function updateFixtureScore(idx, team, val) {
@@ -651,12 +688,12 @@ function openUpcomingMatchEditor(idx) {
   const s = state.session;
   if (!s || !s.fixture || !s.fixture[idx]) return;
   const m = s.fixture[idx];
-  
+
   // Guardar en variable global temporal para edición
   window._editFixtureIdx = idx;
-  
+
   const pool = [...s.attendees];
-  
+
   const renderSelect = (id) => `<select class="input" style="padding:6px; font-size:0.85rem;" onchange="updateUpcomingPreview()">
     ${pool.map(p => `<option value="${p}" ${p === id ? 'selected' : ''}>${escHtml(playerById(p)?.name)}</option>`).join('')}
   </select>`;
@@ -682,26 +719,26 @@ function openUpcomingMatchEditor(idx) {
   `);
 }
 
-function updateUpcomingPreview() {}
+function updateUpcomingPreview() { }
 
 function saveUpcomingMatch() {
   const s = state.session;
   const idx = window._editFixtureIdx;
   if (!s || !s.fixture || idx === undefined || !s.fixture[idx]) return;
-  
+
   const selects = document.querySelectorAll('#upcoming-edit-container select');
   if (selects.length !== 4) return;
-  
+
   const vals = Array.from(selects).map(s => s.value);
   const unique = new Set(vals);
   if (unique.size !== 4) {
     showToast('⚠️ No puedes repetir jugadores en el mismo partido');
     return;
   }
-  
+
   s.fixture[idx].team1 = [vals[0], vals[1]];
   s.fixture[idx].team2 = [vals[2], vals[3]];
-  
+
   CACHE.set(CK.SESSION, s);
   closeModal();
   renderPage();
@@ -735,12 +772,12 @@ async function finishSession() {
   const btn = document.getElementById('btn-confirm-finish');
   if (btn) { btn.disabled = true; btn.innerHTML = '<span class="spinner-sm"></span> Finalizando…'; }
   const s = state.session;
-  
+
   // Procesar partidos del fixture
   s.matches = [];
   let index = 1;
   const played = s.fixture.filter(m => !m.skipped && (m.score1 > 0 || m.score2 > 0));
-  
+
   for (const m of played) {
     const partido = {
       id: uid(),
@@ -759,18 +796,18 @@ async function finishSession() {
   try {
     const matchPromises = s.matches.map(p => API.savePartido(p));
     await Promise.all(matchPromises);
-    
+
     await API.saveJornada({ id: s.id, id_torneo: state.activeTorneo, fecha: s.date, games_format: s.gamesFormat, attendees: s.attendees, finished: true });
     setSyncStatus('idle');
   } catch (err) {
     setSyncStatus('error');
     showToast('⚠️ Datos guardados localmente (Error: ' + err.message + ')', 4000);
   }
-  
+
   state.history.push({ id: s.id, id_torneo: state.activeTorneo || 'torneo_inicial', date: s.date, gamesFormat: s.gamesFormat, attendees: s.attendees, matches: s.matches });
   CACHE.set(CK.HISTORY, state.history);
   s.finished = true; CACHE.set(CK.SESSION, s);
-  
+
   closeModal();
   renderPage();
   showToast('🏆 ¡Jornada finalizada y ELO calculado!');
@@ -985,7 +1022,7 @@ function openJornadaDetails(id) {
 
   const pairsHtml = bestPairs.length > 0
     ? `<p class="section-title" style="margin-top:20px;margin-bottom:10px">👥 Mejor Pareja</p>` +
-      bestPairs.map(pair => `
+    bestPairs.map(pair => `
         <div class="pair-card" style="margin-bottom:8px;padding:12px">
           <div style="font-size:0.9rem;font-weight:800;color:var(--text-primary);margin-bottom:6px">${escHtml(pair.names)}</div>
           <div style="display:flex;gap:16px;font-size:0.8rem;color:var(--text-secondary)">
@@ -1160,7 +1197,13 @@ function renderStatsPage(page) {
   }
   const stats = computeGlobalStats(); const total = history.reduce((s, h) => s + h.matches.length, 0);
   c.innerHTML = `
-    <div class="tab-selector"><button class="tab-opt active" onclick="switchStatTab('ranking',this)">🏆 Ranking</button><button class="tab-opt" onclick="switchStatTab('games',this)">🎾 Games</button><button class="tab-opt" onclick="switchStatTab('attend',this)">📅 Asistencia</button><button class="tab-opt" onclick="switchStatTab('pairs',this)">👥 Parejas</button></div>
+    <div class="tab-selector" style="flex-wrap:wrap; gap:4px;">
+      <button class="tab-opt active" onclick="switchStatTab('ranking',this)">🏆 Ranking</button>
+      <button class="tab-opt" onclick="switchStatTab('chart',this)">📈 Evolución</button>
+      <button class="tab-opt" onclick="switchStatTab('games',this)">🎾 Games</button>
+      <button class="tab-opt" onclick="switchStatTab('attend',this)">📅 Asistencia</button>
+      <button class="tab-opt" onclick="switchStatTab('pairs',this)">👥 Parejas</button>
+    </div>
     <div class="hero-grid"><div class="hero-stat"><div class="icon">🗓</div><div class="value">${history.length}</div><div class="label">Jornadas</div></div><div class="hero-stat"><div class="icon">🎾</div><div class="value">${total}</div><div class="label">Partidos</div></div></div>`;
   const tc = document.createElement('div'); tc.id = 'stats-tab-content'; c.appendChild(tc);
   renderStatTab(tc, 'ranking', stats); page.appendChild(c);
@@ -1186,6 +1229,74 @@ function renderStatTab(c, tab, stats) {
   } else if (tab === 'pairs') {
     if (!stats.pairs.length) { c.innerHTML = '<div class="empty-state"><div class="empty-icon">👥</div><div class="empty-title">Sin datos de parejas</div></div>'; return; }
     c.innerHTML = `<p class="section-title">👥 Mejores Parejas</p>` + stats.pairs.slice(0, 10).map((pair, i) => `<div class="pair-card"><div style="display:flex;align-items:center;justify-content:space-between;gap:8px"><div class="pair-names">${escHtml(pair.names)}</div>${i === 0 ? '<span class="badge badge-purple">🏆 Mejor Pareja</span>' : ''}</div><div class="pair-stats-row"><div class="pair-stat">Juntos: <strong>${pair.total}</strong></div><div class="pair-stat">Victorias: <strong>${pair.wins}</strong></div><div class="pair-stat">Win rate: <strong>${pair.total > 0 ? Math.round((pair.wins / pair.total) * 100) : 0}%</strong></div></div><div class="progress-wrap" style="margin-top:8px"><div class="progress-bar" style="width:${pair.total > 0 ? Math.round((pair.wins / pair.total) * 100) : 0}%;background:linear-gradient(90deg,var(--purple),var(--accent))"></div></div></div>`).join('');
+  } else if (tab === 'chart') {
+    const topPlayers = stats.ranking.slice(0, 5); // Solo los mejores 5 para no saturar el grafico
+    if (topPlayers.length === 0 || !topPlayers[0].eloHistory) {
+      c.innerHTML = '<div class="empty-state"><div class="empty-icon">📈</div><div class="empty-title">No hay historial suficiente</div></div>'; return;
+    }
+    
+    // Calcular max y min
+    let maxElo = 1000, minElo = 1000, maxIdx = 1;
+    topPlayers.forEach(p => {
+      p.eloHistory.forEach((h, idx) => {
+        if (h.elo > maxElo) maxElo = h.elo;
+        if (h.elo < minElo) minElo = h.elo;
+        if (idx > maxIdx) maxIdx = idx;
+      });
+    });
+    
+    // Dar margen al grafico
+    maxElo = Math.ceil(maxElo + 20); minElo = Math.floor(minElo - 20);
+    const range = maxElo - minElo;
+    
+    const w = 300, h = 180;
+    
+    const lines = topPlayers.map((p, i) => {
+      if (p.eloHistory.length <= 1) return '';
+      const points = p.eloHistory.map((hist, idx) => {
+        const x = (idx / maxIdx) * w;
+        const y = h - (((hist.elo - minElo) / range) * h);
+        return `${x},${y}`;
+      }).join(' ');
+      
+      const lastHist = p.eloHistory[p.eloHistory.length - 1];
+      const lastX = ( (p.eloHistory.length - 1) / maxIdx ) * w;
+      const lastY = h - (((lastHist.elo - minElo) / range) * h);
+      
+      return `
+        <polyline points="${points}" fill="none" stroke="${p.color}" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" />
+        <circle cx="${lastX}" cy="${lastY}" r="4" fill="${p.color}" stroke="#fff" stroke-width="1.5" />
+      `;
+    }).join('');
+    
+    const legend = topPlayers.map(p => `
+      <div style="display:flex; align-items:center; gap:6px; font-size:0.75rem; color:var(--text-secondary);">
+        <div style="width:10px; height:10px; border-radius:50%; background:${p.color};"></div>
+        ${escHtml(p.name)}
+      </div>
+    `).join('');
+
+    c.innerHTML = `
+      <p class="section-title">📈 Evolución ELO (Top 5)</p>
+      <div class="card" style="padding: 16px; overflow-x: auto;">
+        <svg viewBox="0 -10 ${w} ${h + 20}" style="width:100%; height:auto; overflow:visible;">
+          <!-- Grid Lines -->
+          <line x1="0" y1="0" x2="${w}" y2="0" stroke="var(--border)" stroke-dasharray="4" />
+          <line x1="0" y1="${h/2}" x2="${w}" y2="${h/2}" stroke="var(--border)" stroke-dasharray="4" />
+          <line x1="0" y1="${h}" x2="${w}" y2="${h}" stroke="var(--border)" stroke-dasharray="4" />
+          
+          <!-- Y-Axis Labels -->
+          <text x="-5" y="4" font-size="10" fill="var(--text-muted)" text-anchor="end">${maxElo}</text>
+          <text x="-5" y="${h/2 + 4}" font-size="10" fill="var(--text-muted)" text-anchor="end">${Math.round((maxElo+minElo)/2)}</text>
+          <text x="-5" y="${h + 4}" font-size="10" fill="var(--text-muted)" text-anchor="end">${minElo}</text>
+          
+          ${lines}
+        </svg>
+        <div style="display:flex; flex-wrap:wrap; gap:12px; margin-top:20px; justify-content:center;">
+          ${legend}
+        </div>
+      </div>
+    `;
   }
 }
 
@@ -1196,9 +1307,9 @@ function getActiveHistory() {
 
 function computeGlobalStats() {
   const ps = {}, pairs = {};
-  
+
   state.players.forEach(p => {
-    ps[p.id] = { wins: 0, matches: 0, games: 0, sessions: 0, elo: 1000 };
+    ps[p.id] = { wins: 0, matches: 0, games: 0, sessions: 0, elo: 1000, eloHistory: [{ date: 'Inicio', elo: 1000 }] };
   });
 
   const history = getActiveHistory().sort((a, b) => new Date(a.date) - new Date(b.date));
@@ -1215,12 +1326,15 @@ function computeGlobalStats() {
       });
       att = [...attSet];
     }
-    for (const id of att) { if (!ps[id]) ps[id] = { wins: 0, matches: 0, games: 0, sessions: 0, elo: 1000 }; ps[id].sessions++; }
+    for (const id of att) { 
+      if (!ps[id]) ps[id] = { wins: 0, matches: 0, games: 0, sessions: 0, elo: 1000, eloHistory: [{ date: 'Inicio', elo: 1000 }] }; 
+      ps[id].sessions++; 
+    }
     const matches = [...session.matches].sort((a, b) => a.matchIndex - b.matchIndex);
-    
+
     for (const m of matches) {
       if (m.skipped) continue;
-      
+
       const t1 = m.team1.filter(id => ps[id]);
       const t2 = m.team2.filter(id => ps[id]);
       if (t1.length === 0 || t2.length === 0) continue;
@@ -1245,33 +1359,40 @@ function computeGlobalStats() {
       const delta2 = K * mov * (s2 - e2);
 
       const t1w = m.score1 > m.score2, t2w = m.score2 > m.score1;
-      
-      for (const id of m.team1) { 
+
+      for (const id of m.team1) {
         if (ps[id]) { ps[id].matches++; if (t1w) ps[id].wins++; ps[id].games += m.score1; ps[id].elo += delta1; }
       }
-      for (const id of m.team2) { 
+      for (const id of m.team2) {
         if (ps[id]) { ps[id].matches++; if (t2w) ps[id].wins++; ps[id].games += m.score2; ps[id].elo += delta2; }
       }
-      
-      const proc = (team, won) => { 
-        const [a, b] = [...team].sort(); const key = a + '_' + b; 
-        if (!pairs[key]) { const pa = playerById(a), pb = playerById(b); pairs[key] = { wins: 0, total: 0, names: [pa?.name || '?', pb?.name || '?'].join(' & ') }; } 
-        pairs[key].total++; if (won) pairs[key].wins++; 
+
+      const proc = (team, won) => {
+        const [a, b] = [...team].sort(); const key = a + '_' + b;
+        if (!pairs[key]) { const pa = playerById(a), pb = playerById(b); pairs[key] = { wins: 0, total: 0, names: [pa?.name || '?', pb?.name || '?'].join(' & ') }; }
+        pairs[key].total++; if (won) pairs[key].wins++;
       };
       proc(m.team1, t1w); proc(m.team2, t2w);
     }
+    
+    // Al final de la jornada, guardar el Elo resultante para el historial
+    for (const id of att) {
+      if (ps[id]) {
+        ps[id].eloHistory.push({ date: session.date, elo: ps[id].elo });
+      }
+    }
   }
-  
+
   const ids = [...new Set([...state.players.map(p => p.id), ...Object.keys(ps)])];
-  const row = id => { 
-    const p = playerById(id); 
-    const s = ps[id] || { wins: 0, matches: 0, games: 0, sessions: 0, elo: 1000 }; 
+  const row = id => {
+    const p = playerById(id);
+    const s = ps[id] || { wins: 0, matches: 0, games: 0, sessions: 0, elo: 1000, eloHistory: [] };
     let createdAt = 0;
     if (id && id.length > 5) { const ts = parseInt(id.slice(0, -5), 36); if (!isNaN(ts) && ts > 1600000000000) createdAt = ts - 86400000; }
     let possible = 0; for (const j of history) { if (new Date(j.date).getTime() >= createdAt) possible++; }
-    return { id, name: p?.name || '(Eliminado)', color: p?.color || '#888', possible, ...s }; 
+    return { id, name: p?.name || '(Eliminado)', color: p?.color || '#888', possible, eloHistory: s.eloHistory || [], ...s };
   };
-  
+
   return {
     ranking: ids.map(row).sort((a, b) => b.elo - a.elo),
     gamesRanking: ids.map(row).sort((a, b) => b.games - a.games),
