@@ -402,56 +402,16 @@ function renderNoSession(c) {
       <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:12px;">
         <div style="display:flex; align-items:center; gap:8px;">
           <span style="font-size:1.4rem;">🏅</span>
-          <h3 style="font-size:1rem; font-weight:800; margin:0;">¿Cómo funciona el Rating?</h3>
+          <h3 style="font-size:1rem; font-weight:800; margin:0;">Sistema de Rating</h3>
         </div>
-        <button class="btn btn-ghost btn-sm" onclick="document.getElementById('elo-examples').style.display='block'; this.style.display='none';" style="font-size:0.75rem;">Ver Detalles ▼</button>
       </div>
-      <p style="font-size:0.85rem; color:var(--text-secondary); line-height:1.5; margin-bottom:12px;">
-        El ranking usa <strong>TrueSkill</strong>, un sistema bayesiano. Cada jugador tiene una habilidad estimada (μ) y una incertidumbre (σ). Ganarle a mejores rivales o por mayor diferencia de games te sube más. <strong>Si no asistís, tu rating baja proporcionalmente.</strong>
+      <p style="font-size:0.85rem; color:var(--text-secondary); line-height:1.5; margin-bottom:8px;">
+        El ranking se calcula por torneo usando el <strong>Método Nuco Flocco</strong>, basado en TrueSkill bayesiano con penalización por inasistencia y margen de victoria.
       </p>
-      
-      <div id="elo-examples" style="display:none; background:var(--bg-card); border-radius:var(--radius-sm); border:1px solid var(--border); padding:12px; margin-top:12px;">
-        <p style="font-size:0.8rem; font-weight:700; color:var(--text-primary); margin-bottom:8px;">Fórmula del Rating:</p>
-        <div style="font-size:0.75rem; color:var(--text-secondary); background:var(--bg-body); padding:8px; border-radius:6px; margin-bottom:12px; font-family:monospace; line-height:1.6;">
-<span style="color:var(--accent);">Habilidad (TrueSkill):</span>
-Cada jugador = N(μ, σ)
-μ sube al ganar, baja al perder
-σ baja con más partidos (más confianza)
-
-<span style="color:var(--accent);">Penalización Asistencia:</span>
-Rating = μ + (k/N − 1) × σ
-k = jornadas asistidas, N = total jornadas
-
-<span style="color:var(--accent);">Margen de Victoria:</span>
-M = log(|score₁ − score₂| + 1) + 1
-        </div>
-        
-        <p style="font-size:0.8rem; font-weight:700; color:var(--text-primary); margin-bottom:8px;">¿Cómo afecta?</p>
-        
-        <div style="display:flex; flex-direction:column; gap:8px;">
-          <div style="font-size:0.75rem; padding:8px; border-radius:6px; background:rgba(34,197,94,0.1); border:1px solid rgba(34,197,94,0.2);">
-            <strong style="color:var(--green);">Ganás por goleada (6-0)</strong><br>
-            <span style="color:var(--text-secondary);">El margen amplifica la subida de μ. Subís mucho más que ganando 6-5.</span>
-          </div>
-          
-          <div style="font-size:0.75rem; padding:8px; border-radius:6px; background:rgba(59,130,246,0.1); border:1px solid rgba(59,130,246,0.2);">
-            <strong style="color:var(--accent);">Le ganás a alguien mejor</strong><br>
-            <span style="color:var(--text-secondary);">TrueSkill te premia más por vencer a rivales con μ más alto (sorpresa estadística).</span>
-          </div>
-          
-          <div style="font-size:0.75rem; padding:8px; border-radius:6px; background:rgba(245,158,11,0.1); border:1px solid rgba(245,158,11,0.2);">
-            <strong style="color:var(--amber);">Faltás a jornadas</strong><br>
-            <span style="color:var(--text-secondary);">Si asististe a 3 de 6 jornadas (50%), tu rating se penaliza restando σ/2. <strong>Venir es clave.</strong></span>
-          </div>
-          
-          <div style="font-size:0.75rem; padding:8px; border-radius:6px; background:rgba(239,68,68,0.1); border:1px solid rgba(239,68,68,0.2);">
-            <strong style="color:var(--red);">Pocos partidos = alta incertidumbre</strong><br>
-            <span style="color:var(--text-secondary);">Al principio σ es alto (poca info). Con más partidos σ baja y tu rating se estabiliza.</span>
-          </div>
-        </div>
-      </div>
-      
-      <button class="btn btn-ghost btn-full" onclick="navigate('stats')" style="margin-top:16px; font-size:0.85rem; color:var(--amber); background:rgba(245,158,11,0.1);">Ver Ranking Actual 🏆</button>
+      <p style="font-size:0.78rem; color:var(--text-muted); font-style:italic; margin-bottom:12px;">
+        Diseñado por el matemático <strong>Nuco Flocco</strong> para RotaPádel.
+      </p>
+      <button class="btn btn-ghost btn-full" onclick="navigate('stats')" style="font-size:0.85rem; color:var(--amber); background:rgba(245,158,11,0.1);">Ver Ranking del Torneo 🏆</button>
     </div>
   `;
 }
@@ -1228,13 +1188,18 @@ function renderStatsPage(page) {
     page.appendChild(c); return;
   }
   const stats = computeGlobalStats(); const total = history.reduce((s, h) => s + h.matches.length, 0);
+  const tName = state.torneos.find(t => t.id === state.activeTorneo)?.name || 'General';
   c.innerHTML = `
+    <div style="display:flex; align-items:center; gap:8px; margin-bottom:4px;">
+      <span class="badge badge-blue" style="font-size:0.75rem;">🏆 ${escHtml(tName)}</span>
+    </div>
     <div class="tab-selector" style="flex-wrap:wrap; gap:4px;">
       <button class="tab-opt active" onclick="switchStatTab('ranking',this)">🏆 Ranking</button>
       <button class="tab-opt" onclick="switchStatTab('chart',this)">📈 Evolución</button>
       <button class="tab-opt" onclick="switchStatTab('games',this)">🎾 Games</button>
       <button class="tab-opt" onclick="switchStatTab('attend',this)">📅 Asistencia</button>
       <button class="tab-opt" onclick="switchStatTab('pairs',this)">👥 Parejas</button>
+      <button class="tab-opt" onclick="switchStatTab('formula',this)">📐 Fórmula</button>
     </div>
     <div class="hero-grid"><div class="hero-stat"><div class="icon">🗓</div><div class="value">${history.length}</div><div class="label">Jornadas</div></div><div class="hero-stat"><div class="icon">🎾</div><div class="value">${total}</div><div class="label">Partidos</div></div></div>`;
   const tc = document.createElement('div'); tc.id = 'stats-tab-content'; c.appendChild(tc);
@@ -1249,17 +1214,139 @@ function switchStatTab(tab, btn) {
 function renderStatTab(c, tab, stats) {
   c.innerHTML = ''; c.className = 'gap-12';
   if (tab === 'ranking') {
-    c.innerHTML = `<p class="section-title">🏆 Ranking TrueSkill</p><div class="card">${stats.ranking.map((r, i) => {
+    c.innerHTML = `<p class="section-title">🏆 Ranking Método Nuco Flocco</p><div class="card">${stats.ranking.map((r, i) => {
       const rankInfo = getEloRankInfo(r.elo);
-      const penaltyHtml = r.penalty < 0 ? `<span style="font-size:0.65rem; color:var(--red); margin-left:4px;">(${r.penalty} asist.)</span>` : '';
-      const sigmaHtml = `<span style="font-size:0.65rem; color:var(--text-muted); margin-left:4px;">σ=${r.sigma.toFixed(1)}</span>`;
-      return `<div class="stat-row"><div class="stat-pos ${i === 0 ? 'gold' : i === 1 ? 'silver' : i === 2 ? 'bronze' : ''}">${i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : i + 1}</div><div class="stat-avatar" style="background:${r.color}">${initials(r.name)}</div><div style="flex:1;min-width:0"><div class="stat-name">${escHtml(r.name)}</div><div style="font-size:0.75rem; color:${rankInfo.color}; margin-top:4px; font-weight:700;">${rankInfo.badge} - ${Math.round(r.elo)} Pts${penaltyHtml}${sigmaHtml}</div></div><div style="text-align:right"><div class="stat-val" style="font-size:1.1rem">${r.wins} v</div><div class="stat-unit" style="font-size:0.75rem">en ${r.matches} pj</div></div></div>`;
+      const penaltyHtml = r.penalty < -1 ? `<span style="font-size:0.65rem; color:var(--red); margin-left:4px;">📉 ${r.penalty} por faltas</span>` : '';
+      return `<div class="stat-row"><div class="stat-pos ${i === 0 ? 'gold' : i === 1 ? 'silver' : i === 2 ? 'bronze' : ''}">${i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : i + 1}</div><div class="stat-avatar" style="background:${r.color}">${initials(r.name)}</div><div style="flex:1;min-width:0"><div class="stat-name">${escHtml(r.name)}</div><div style="font-size:0.75rem; color:${rankInfo.color}; margin-top:4px; font-weight:700;">${rankInfo.badge} - ${Math.round(r.elo)} Pts${penaltyHtml}</div></div><div style="text-align:right"><div class="stat-val" style="font-size:1.1rem">${r.wins} v</div><div class="stat-unit" style="font-size:0.75rem">en ${r.matches} pj</div></div></div>`;
     }).join('')}</div>`;
   } else if (tab === 'games') {
     const max = stats.gamesRanking[0]?.games || 1;
     c.innerHTML = `<p class="section-title">🎾 Games Ganados</p><div class="card">${stats.gamesRanking.map((r, i) => `<div class="stat-row"><div class="stat-pos ${i === 0 ? 'gold' : i === 1 ? 'silver' : i === 2 ? 'bronze' : ''}">${i + 1}</div><div class="stat-avatar" style="background:${r.color}">${initials(r.name)}</div><div style="flex:1;min-width:0"><div class="stat-name">${escHtml(r.name)}</div><div class="stat-bar-wrap" style="max-width:120px"><div class="stat-bar" style="width:${Math.round((r.games / max) * 100)}%;background:linear-gradient(90deg,var(--green),var(--cyan))"></div></div></div><div style="text-align:right"><div class="stat-val">${r.games}</div><div class="stat-unit">games</div></div></div>`).join('')}</div>`;
   } else if (tab === 'attend') {
     c.innerHTML = `<p class="section-title">📅 Asistencia</p><div class="card">${stats.attendance.map((r, i) => { const pct = r.possible > 0 ? Math.round((r.sessions / r.possible) * 100) : 0; return `<div class="stat-row"><div class="stat-pos">${i + 1}</div><div class="stat-avatar" style="background:${r.color}">${initials(r.name)}</div><div style="flex:1;min-width:0"><div class="stat-name">${escHtml(r.name)}</div><div class="stat-bar-wrap" style="max-width:120px"><div class="stat-bar" style="width:${pct}%;background:linear-gradient(90deg,var(--amber),var(--red))"></div></div></div><div style="text-align:right"><div class="stat-val">${r.sessions}</div><div class="stat-unit">de ${r.possible} (${pct}%)</div></div></div>`; }).join('')}</div>`;
+  } else if (tab === 'formula') {
+    c.innerHTML = `
+      <div class="card" style="padding:20px; border-left:4px solid var(--accent);">
+        <div style="display:flex; align-items:center; gap:10px; margin-bottom:16px;">
+          <span style="font-size:1.6rem;">📐</span>
+          <div>
+            <p style="font-size:1.1rem; font-weight:900; color:var(--text-primary); margin:0;">Método Nuco Flocco</p>
+            <p style="font-size:0.75rem; color:var(--text-muted); margin:0; font-style:italic;">Sistema de ranking diseñado por el matemático Nuco Flocco para RotaPádel</p>
+          </div>
+        </div>
+        
+        <div style="font-size:0.82rem; color:var(--text-secondary); line-height:1.6;">
+          <p style="margin-bottom:12px;">El método se basa en <strong style="color:var(--text-primary);">TrueSkill</strong> (sistema bayesiano de Microsoft) con dos modificaciones originales: <em>penalización por inasistencia</em> y <em>ponderación por margen de victoria</em>.</p>
+          <p style="margin-bottom:12px;">Cada ranking es <strong style="color:var(--text-primary);">independiente por torneo</strong>. Al cambiar de torneo, se recalcula el ranking solo con las jornadas de ese torneo.</p>
+        </div>
+
+        <div style="margin-top:16px; padding-top:16px; border-top:1px dashed var(--border);">
+          <p style="font-size:0.9rem; font-weight:800; color:var(--accent); margin-bottom:12px;">1. Modelo del Jugador</p>
+          <div style="background:var(--bg-input); padding:12px; border-radius:var(--radius-sm); font-family:monospace; font-size:0.78rem; line-height:1.8; margin-bottom:8px;">
+Cada jugador se modela como:
+  <strong>Habilidad ~ N(μ, σ²)</strong>
+
+  μ = habilidad estimada (inicia en 25)
+  σ = incertidumbre (inicia en 8.33)
+
+  A más partidos → σ baja (más confianza)
+  σ nunca llega a 0 gracias al factor τ
+          </div>
+        </div>
+
+        <div style="margin-top:16px; padding-top:16px; border-top:1px dashed var(--border);">
+          <p style="font-size:0.9rem; font-weight:800; color:var(--accent); margin-bottom:12px;">2. Actualización por Partido (2v2)</p>
+          <div style="background:var(--bg-input); padding:12px; border-radius:var(--radius-sm); font-family:monospace; font-size:0.78rem; line-height:1.8; margin-bottom:8px;">
+Para un partido Equipo A vs Equipo B:
+
+  μ_equipo = μ_jugador1 + μ_jugador2
+  σ²_equipo = σ²_jugador1 + σ²_jugador2
+
+  c = √(σ²_A + σ²_B + 2β²)
+  t = (μ_ganador − μ_perdedor) / c
+
+  <strong>Funciones de corrección:</strong>
+  v(t) = φ(t) / Φ(t)    ← ratio Mills
+  w(t) = v(t) × (v(t) + t)
+
+  <strong>Update de cada jugador:</strong>
+  Δμ = ±(σ² / c) × v(t) × M
+  σ²_new = σ² × (1 − (σ²/c²) × w(t))
+          </div>
+        </div>
+
+        <div style="margin-top:16px; padding-top:16px; border-top:1px dashed var(--border);">
+          <p style="font-size:0.9rem; font-weight:800; color:var(--accent); margin-bottom:12px;">3. Margen de Victoria (M)</p>
+          <div style="background:var(--bg-input); padding:12px; border-radius:var(--radius-sm); font-family:monospace; font-size:0.78rem; line-height:1.8; margin-bottom:8px;">
+  <strong>M = 1 + 0.15 × ln(|score₁ − score₂| + 1)</strong>
+
+  Ejemplos:
+  · Gana 6-5 (diff=1) → M = 1.10
+  · Gana 6-3 (diff=3) → M = 1.21
+  · Gana 6-0 (diff=6) → M = 1.29
+
+  Amplifica el update de μ sin
+  desbalancear la escala.
+          </div>
+        </div>
+
+        <div style="margin-top:16px; padding-top:16px; border-top:1px dashed var(--border);">
+          <p style="font-size:0.9rem; font-weight:800; color:var(--accent); margin-bottom:12px;">4. Penalización por Inasistencia</p>
+          <div style="background:var(--bg-input); padding:12px; border-radius:var(--radius-sm); font-family:monospace; font-size:0.78rem; line-height:1.8; margin-bottom:8px;">
+  <strong>Rating = μ + (k/N − 1) × σ</strong>
+
+  k = jornadas a las que asistió
+  N = total de jornadas del torneo
+
+  · Asiste a todas (k/N=1) → Rating = μ
+  · Asiste al 50% (k/N=0.5) → Rating = μ − σ/2
+  · No asistió nunca (k/N=0) → Rating = μ − σ
+
+  A mayor incertidumbre (σ), mayor
+  la penalización por no venir.
+          </div>
+        </div>
+
+        <div style="margin-top:16px; padding-top:16px; border-top:1px dashed var(--border);">
+          <p style="font-size:0.9rem; font-weight:800; color:var(--accent); margin-bottom:12px;">5. Parámetros</p>
+          <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px;">
+            <div style="background:var(--bg-input); padding:10px; border-radius:var(--radius-sm); text-align:center;">
+              <div style="font-size:0.7rem; color:var(--text-muted); margin-bottom:4px;">μ₀ (Media inicial)</div>
+              <div style="font-size:1.1rem; font-weight:900; color:var(--text-primary);">25</div>
+            </div>
+            <div style="background:var(--bg-input); padding:10px; border-radius:var(--radius-sm); text-align:center;">
+              <div style="font-size:0.7rem; color:var(--text-muted); margin-bottom:4px;">σ₀ (Incertidumbre)</div>
+              <div style="font-size:1.1rem; font-weight:900; color:var(--text-primary);">8.33</div>
+            </div>
+            <div style="background:var(--bg-input); padding:10px; border-radius:var(--radius-sm); text-align:center;">
+              <div style="font-size:0.7rem; color:var(--text-muted); margin-bottom:4px;">β (Ruido perf.)</div>
+              <div style="font-size:1.1rem; font-weight:900; color:var(--text-primary);">4.17</div>
+            </div>
+            <div style="background:var(--bg-input); padding:10px; border-radius:var(--radius-sm); text-align:center;">
+              <div style="font-size:0.7rem; color:var(--text-muted); margin-bottom:4px;">τ (Factor dinámico)</div>
+              <div style="font-size:1.1rem; font-weight:900; color:var(--text-primary);">0.50</div>
+            </div>
+          </div>
+        </div>
+
+        <div style="margin-top:16px; padding-top:16px; border-top:1px dashed var(--border);">
+          <p style="font-size:0.9rem; font-weight:800; color:var(--accent); margin-bottom:12px;">6. Escala de Visualización</p>
+          <div style="background:var(--bg-input); padding:12px; border-radius:var(--radius-sm); font-family:monospace; font-size:0.78rem; line-height:1.8; margin-bottom:8px;">
+  <strong>Pts = (μ_ajustado / 50) × 1000 + 500</strong>
+
+  μ=25 (inicio) → 1000 Pts
+  μ=35 (bueno)  → 1200 Pts
+  μ=15 (bajo)   →  800 Pts
+          </div>
+        </div>
+
+        <div style="margin-top:20px; padding:14px; background:rgba(59,130,246,0.06); border:1px solid rgba(59,130,246,0.15); border-radius:var(--radius-sm);">
+          <p style="font-size:0.8rem; color:var(--text-secondary); line-height:1.5; margin:0;">
+            <strong style="color:var(--text-primary);">Nota:</strong> El ranking se recalcula completamente desde el historial cada vez que se abre la app. No se persisten valores de μ/σ. Cada torneo tiene su propio ranking independiente.
+          </p>
+        </div>
+      </div>
+    `;
   } else if (tab === 'pairs') {
     if (!stats.pairs.length) { c.innerHTML = '<div class="empty-state"><div class="empty-icon">👥</div><div class="empty-title">Sin datos de parejas</div></div>'; return; }
     c.innerHTML = `<p class="section-title">👥 Mejores Parejas</p>` + stats.pairs.slice(0, 10).map((pair, i) => `<div class="pair-card"><div style="display:flex;align-items:center;justify-content:space-between;gap:8px"><div class="pair-names">${escHtml(pair.names)}</div>${i === 0 ? '<span class="badge badge-purple">🏆 Mejor Pareja</span>' : ''}</div><div class="pair-stats-row"><div class="pair-stat">Juntos: <strong>${pair.total}</strong></div><div class="pair-stat">Victorias: <strong>${pair.wins}</strong></div><div class="pair-stat">Win rate: <strong>${pair.total > 0 ? Math.round((pair.wins / pair.total) * 100) : 0}%</strong></div></div><div class="progress-wrap" style="margin-top:8px"><div class="progress-bar" style="width:${pair.total > 0 ? Math.round((pair.wins / pair.total) * 100) : 0}%;background:linear-gradient(90deg,var(--purple),var(--accent))"></div></div></div>`).join('');
@@ -1381,7 +1468,7 @@ function getActiveHistory() {
 }
 
 // ═══ TRUESKILL MATH HELPERS ═══════════════════════════════════════════
-const TS = { MU0: 25, SIGMA0: 25 / 3, BETA: 25 / 6, TAU: 25 / 300 };
+const TS = { MU0: 25, SIGMA0: 25 / 3, BETA: 25 / 6, TAU: 0.5 };
 
 function normalPdf(x) { return Math.exp(-0.5 * x * x) / Math.sqrt(2 * Math.PI); }
 
@@ -1468,7 +1555,7 @@ function computeGlobalStats() {
 
       // Factor de margen de victoria: escala el update por la diferencia de games
       const scoreDiff = Math.abs(m.score1 - m.score2);
-      const marginFactor = Math.log(scoreDiff + 1) + 1; // 1.0 (empate) a ~2.95 (diff=6)
+      const marginFactor = 1 + 0.15 * Math.log(scoreDiff + 1); // 1.0 (empate) a ~1.29 (diff=6)
 
       if (!isDraw) {
         // Victoria/Derrota

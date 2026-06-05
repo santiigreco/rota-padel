@@ -37,14 +37,22 @@ El objeto `API` contiene los métodos para llamar a Google Apps Script por GET c
 - `saveJornada(j)` / `deleteJornada(id)`: ABM de jornadas.
 - `savePartido(p)`: Guarda un partido individual de la jornada actual (fire-and-forget).
 
-## 🎯 Sistema de Rating (TrueSkill)
-La app usa **TrueSkill** (sistema bayesiano de Microsoft) para rankear jugadores, con una modificación custom para penalizar inasistencia.
+## 🎯 Sistema de Rating — Método Nuco Flocco
+La app usa el **Método Nuco Flocco**, basado en TrueSkill (sistema bayesiano de Microsoft) con dos modificaciones originales: penalización por inasistencia y ponderación por margen de victoria. Diseñado por el matemático **Nuco Flocco** para RotaPádel.
+
+**Los rankings son independientes por torneo.** Cada torneo recalcula su ranking solo con sus jornadas.
 
 ### Parámetros (constante `TS`)
 - `MU0 = 25`: Media inicial de habilidad
 - `SIGMA0 = 25/3 ≈ 8.33`: Incertidumbre inicial
 - `BETA = 25/6 ≈ 4.17`: Ruido de performance
-- `TAU = 25/300 ≈ 0.083`: Factor dinámico (evita que σ→0)
+- `TAU = 0.5`: Factor dinámico (evita que σ→0, mantiene sigma relevante para la penalización por asistencia)
+
+### Margen de Victoria
+```
+M = 1 + 0.15 × ln(|score₁ − score₂| + 1)
+```
+Rango: 1.0 (empate) a ~1.29 (diff=6). Suavizado para evitar divergencia excesiva.
 
 ### Cálculo del Rating Visible
 ```
@@ -55,9 +63,12 @@ Donde `k` = jornadas asistidas, `N` = total jornadas del torneo.
 Se escala a base ~1000: `display = (μ/50)*1000 + 500`
 
 ### Funciones Clave
-- `computeGlobalStats()`: Recalcula TODO el ranking desde el historial. Recorre jornadas cronológicamente, aplica TrueSkill a cada partido 2v2, y devuelve rankings/parejas/asistencia.
+- `computeGlobalStats()`: Recalcula TODO el ranking desde el historial del torneo activo. Recorre jornadas cronológicamente, aplica TrueSkill a cada partido 2v2, y devuelve rankings/parejas/asistencia.
 - `normalPdf()`, `normalCdf()`, `tsVFunction()`, `tsWFunction()`: Funciones matemáticas de la distribución normal necesarias para TrueSkill.
 - `getEloRankInfo(elo)`: Devuelve badge/color según el rating (Diamante ≥1150, Oro ≥1080, Plata ≥1020, Bronce ≥960, Hierro <960).
+
+### Tab "📐 Fórmula" en Estadísticas
+La pestaña Fórmula en la página de estadísticas muestra toda la matemática del método con atribución a Nuco Flocco. Cualquier cambio en los parámetros o fórmulas debe reflejarse también ahí.
 
 ## ⚙️ Reglas Importantes de Desarrollo
 1. **Diseño Premium**: El CSS está muy pulido con glassmorphism, gradientes, bordes sutiles y modo oscuro. Al agregar componentes, respeta las variables CSS existentes (ej: `var(--accent)`, `var(--bg-card)`) y las clases como `.card`, `.btn`, `.btn-primary`.
