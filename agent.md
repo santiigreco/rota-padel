@@ -70,6 +70,20 @@ Se escala a base ~1000: `display = (μ/50)*1000 + 500`
 ### Tab "📐 Fórmula" en Estadísticas
 La pestaña Fórmula en la página de estadísticas muestra toda la matemática del método con atribución a Nuco Flocco. Cualquier cambio en los parámetros o fórmulas debe reflejarse también ahí.
 
+## 🚀 Flujo Rápido y Generación de Fixture
+
+### 1. Setup sin Configuración
+El flujo de crear una jornada ("Nueva Jornada") salta cualquier pregunta sobre "Games a jugar" o "Cantidad de partidos". Simplemente seleccionás quiénes asisten y el sistema propone un fixture de **10 partidos fijos por defecto**.
+
+### 2. Algoritmo Inteligente de Cruces (`generateNextMatch`)
+El sistema genera combinaciones posibles y penaliza según:
+- **Equidad de Juego:** Si alguien juega más que el resto (penalización altísima, `1000 pts`).
+- **Rotación:** Penaliza repetir compañero (`40 pts`) y repetir rival (`15 pts`).
+- **Nivelación por ELO:** Se incorpora el *Método Nuco Flocco* calculando la diferencia de μ entre ambos equipos (`|μ_A + μ_B - (μ_C + μ_D)| * 5`). Esto hace que, a igualdad de rotación, la app **siempre elija el cruce más parejo**.
+
+### 3. Resultados Libres y Descartes
+No hay límite de games. Los usuarios ingresan el resultado de cada partido (ej. 6-3, 10-8). Al finalizar la jornada, el sistema **descarta y borra automáticamente los partidos que quedaron 0-0** o no se jugaron, evitando ensuciar el historial.
+
 ## ⚙️ Reglas Importantes de Desarrollo
 1. **Diseño Premium**: El CSS está muy pulido con glassmorphism, gradientes, bordes sutiles y modo oscuro. Al agregar componentes, respeta las variables CSS existentes (ej: `var(--accent)`, `var(--bg-card)`) y las clases como `.card`, `.btn`, `.btn-primary`.
 2. **Resiliencia Offline**: Todas las acciones de red deben manejarse amigablemente. Usa `withSync(() => ...)` para mostrar feedback al usuario de la actividad de red.

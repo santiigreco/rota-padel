@@ -447,7 +447,7 @@ function openAttendanceModal() {
       ${state.players.map(p => `<div class="check-item" id="chk-${p.id}" onclick="toggleAttendee('${p.id}')"><div class="check-box" id="chkbox-${p.id}"></div><div class="player-avatar" style="background:${p.color}">${initials(p.name)}</div><span class="check-name">${escHtml(p.name)}</span></div>`).join('')}
     </div>
     <div id="attend-msg" style="font-size:0.82rem;color:var(--amber);margin-bottom:10px;min-height:18px"></div>
-    <button class="btn btn-primary btn-full" onclick="proceedToConfig()" id="btn-proceed-config" disabled style="opacity:0.5">⚙️ Configurar Formato</button>`);
+    <button class="btn btn-primary btn-full" onclick="proceedToConfig()" id="btn-proceed-config" disabled style="opacity:0.5">🚀 Generar Fixture</button>`);
   window._attendees = new Set(); updateAttendanceBtn();
 }
 
@@ -468,55 +468,27 @@ function updateAttendanceBtn() {
 
 function proceedToConfig() {
   const attendees = [...window._attendees]; if (attendees.length < 4 || attendees.length > 8) return;
-  const defMatches = attendees.length > 4 ? attendees.length : 3;
-  openModal(`
-    <div class="modal-handle"></div>
-    <p class="modal-title">⚙️ Formato de Jornada</p>
-    <div class="gap-12">
-      <div class="input-group">
-        <label class="input-label">Games por partido: <strong id="games-val" style="color:var(--accent)">4</strong></label>
-        <input type="range" id="games-range" min="2" max="13" value="4" step="1" oninput="updateGamesRange(this.value)" style="margin-top:8px"/>
-        <div style="display:flex;justify-content:space-between;font-size:0.72rem;color:var(--text-muted);margin-top:4px"><span>2</span><span>4</span><span>6</span><span>8</span><span>10</span><span>13</span></div>
-      </div>
-      <div class="input-group">
-        <label class="input-label">Total de partidos a jugar: <strong id="matches-val" style="color:var(--accent)">${defMatches}</strong></label>
-        <input type="range" id="matches-range" min="1" max="15" value="${defMatches}" step="1" oninput="updateMatchesRange(this.value)" style="margin-top:8px"/>
-        <div style="display:flex;justify-content:space-between;font-size:0.72rem;color:var(--text-muted);margin-top:4px"><span>1</span><span>5</span><span>10</span><span>15</span></div>
-      </div>
-      <div class="card" style="background:rgba(59,130,246,0.06);border-color:rgba(59,130,246,0.2)">
-        <p style="font-size:0.82rem;color:var(--text-secondary)">🔄 El motor rotará a los <strong style="color:var(--text-primary)">${attendees.length} jugadores</strong> para maximizar equidad.</p>
-      </div>
-      <button class="btn btn-green btn-full" onclick="previewFixture(${JSON.stringify(attendees).replace(/"/g, "'")})">⚙️ Generar Fixture</button>
-    </div>`);
-  setTimeout(() => { updateGamesRange(4); updateMatchesRange(defMatches); }, 50);
-}
-
-function updateGamesRange(val) {
-  const v = parseInt(val); const el = document.getElementById('games-val'); if (el) el.textContent = v;
-  const r = document.getElementById('games-range'); if (r) { const pct = ((v - 2) / (13 - 2)) * 100; r.style.background = `linear-gradient(to right,var(--accent) 0%,var(--accent) ${pct}%,var(--border) ${pct}%)`; }
-}
-function updateMatchesRange(val) {
-  const v = parseInt(val); const el = document.getElementById('matches-val'); if (el) el.textContent = v;
-  const r = document.getElementById('matches-range'); if (r) { const pct = ((v - 1) / (15 - 1)) * 100; r.style.background = `linear-gradient(to right,var(--accent) 0%,var(--accent) ${pct}%,var(--border) ${pct}%)`; }
+  previewFixture(attendees);
 }
 
 function previewFixture(attendees) {
-  const fmt = parseInt(document.getElementById('games-range')?.value) || 4;
-  const count = parseInt(document.getElementById('matches-range')?.value) || 3;
+  const count = 10; // Fijo 10 partidos por defecto
 
   // Randomize start to add variety to first match
   const sh = [...attendees].sort(() => Math.random() - 0.5);
 
+  const stats = computeGlobalStats();
+  const rankings = stats.ranking.reduce((acc, r) => { acc[r.id] = r; return acc; }, {});
+
   let fixture = [];
   for (let i = 0; i < count; i++) {
-    const next = generateNextMatch(sh, fixture);
+    const next = generateNextMatch(sh, fixture, rankings);
     next.matchIndex = i + 1;
     next.score1 = 0; next.score2 = 0; next.skipped = false;
     fixture.push(next);
   }
 
   window._tempFixture = fixture;
-  window._tempFmt = fmt;
   window._tempAtt = sh;
 
   renderFixturePreview();
@@ -537,7 +509,7 @@ function renderFixturePreview() {
           <div style="flex:1; text-align:left;">${escHtml(t2p1)} <br> ${escHtml(t2p2)}</div>
         </div>
         <div style="display:flex; justify-content:center; margin-top:8px;">
-          <button class="btn btn-ghost btn-sm" onclick="shuffleMatch(${i})" style="font-size:0.7rem; padding:4px 8px;">🔀 Re-armar cruce</button>
+          <button class="btn btn-ghost btn-sm" onclick="shuffleMatch(${i})" style="font-size:0.7rem; padding:4px 8px;">🔄 Cambiar Parejas</button>
         </div>
       </div>
     `;
@@ -551,7 +523,7 @@ function renderFixturePreview() {
     </div>
     <div class="gap-8">
       <button class="btn btn-green btn-full" onclick="launchSession()">🚀 Confirmar y Empezar</button>
-      <button class="btn btn-ghost btn-full" onclick="proceedToConfig()">Volver atrás</button>
+      <button class="btn btn-ghost btn-full" onclick="openAttendanceModal()">Volver a selección</button>
     </div>
   `);
 }
@@ -559,22 +531,31 @@ function renderFixturePreview() {
 function shuffleMatch(idx) {
   const fixture = window._tempFixture;
   const m = fixture[idx];
-  const pool = [...m.team1, ...m.team2].sort(() => Math.random() - 0.5);
-  m.team1 = [pool[0], pool[1]];
-  m.team2 = [pool[2], pool[3]];
+  const pool = [...m.team1, ...m.team2];
+  const splits = getTeamSplits(pool);
+  
+  let currentIdx = 0;
+  for (let i=0; i<splits.length; i++) {
+    const s1 = [...splits[i][0]].sort().join('_');
+    const mt1 = [...m.team1].sort().join('_');
+    if (s1 === mt1 || s1 === [...m.team2].sort().join('_')) { currentIdx = i; break; }
+  }
+  
+  const nextIdx = (currentIdx + 1) % splits.length;
+  m.team1 = splits[nextIdx][0];
+  m.team2 = splits[nextIdx][1];
   renderFixturePreview();
 }
 
 function launchSession() {
   const fixture = window._tempFixture;
-  const fmt = window._tempFmt;
   const attendees = window._tempAtt;
 
   state.session = {
     id: uid(),
     date: new Date().toISOString(),
     attendees,
-    gamesFormat: fmt,
+    gamesFormat: 0, // Ya no se usa
     matches: [],
     fixture: fixture,
     currentMatch: fixture[0],
@@ -649,8 +630,10 @@ function renderActiveSession(c) {
 function addMatchToFixture() {
   const s = state.session;
   if (!s) return;
-  // Use the history of the current fixture to avoid repeating recent matches
-  const next = generateNextMatch(s.attendees, s.fixture);
+  const stats = computeGlobalStats();
+  const rankings = stats.ranking.reduce((acc, r) => { acc[r.id] = r; return acc; }, {});
+  
+  const next = generateNextMatch(s.attendees, s.fixture, rankings);
   next.matchIndex = s.fixture.length + 1;
   next.score1 = 0; next.score2 = 0; next.skipped = false;
   s.fixture.push(next);
@@ -1645,15 +1628,13 @@ function getEloRankInfo(elo) {
 }
 
 // ═══ ROTATION ALGORITHM ════════════════════════════════════════════════
-function generateNextMatch(attendees, played) {
+function generateNextMatch(attendees, played, rankings = {}) {
   const pc = {}, partC = {}, rivC = {};
   for (const id of attendees) pc[id] = 0;
   for (const m of played) {
-    // pc (play count) ignora skips → no afecta quién tiene que jugar más
     if (!m.skipped) {
       for (const id of [...m.team1, ...m.team2]) pc[id] = (pc[id] || 0) + 1;
     }
-    // partC y rivC SÍ cuentan los skips → evita repetir la misma pareja/cruce skipeado
     for (const t of [m.team1, m.team2]) { const k = [...t].sort().join('_'); partC[k] = (partC[k] || 0) + 1; }
     for (const a of m.team1) for (const b of m.team2) { const k = [a, b].sort().join('_'); rivC[k] = (rivC[k] || 0) + 1; }
   }
@@ -1667,6 +1648,15 @@ function generateNextMatch(attendees, played) {
       score += gpc.reduce((s, c) => s + c, 0) * 2;
       score += (partC[[...t1].sort().join('_')] || 0) * 40 + (partC[[...t2].sort().join('_')] || 0) * 40;
       for (const a of t1) for (const b of t2) score += (rivC[[a, b].sort().join('_')] || 0) * 15;
+      
+      // ELO balance calculation
+      const mu1 = t1.reduce((s, id) => s + (rankings[id]?.mu || 25), 0);
+      const mu2 = t2.reduce((s, id) => s + (rankings[id]?.mu || 25), 0);
+      const diff = Math.abs(mu1 - mu2);
+      
+      // Penalizamos desbalance (ej: diff=5 pts de mu suma 25 al score)
+      score += diff * 5;
+
       if (score < best) { best = score; match = { id: uid(), team1: t1, team2: t2 }; }
     }
   }
