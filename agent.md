@@ -37,10 +37,32 @@ El objeto `API` contiene los métodos para llamar a Google Apps Script por GET c
 - `saveJornada(j)` / `deleteJornada(id)`: ABM de jornadas.
 - `savePartido(p)`: Guarda un partido individual de la jornada actual (fire-and-forget).
 
+## 🎯 Sistema de Rating (TrueSkill)
+La app usa **TrueSkill** (sistema bayesiano de Microsoft) para rankear jugadores, con una modificación custom para penalizar inasistencia.
+
+### Parámetros (constante `TS`)
+- `MU0 = 25`: Media inicial de habilidad
+- `SIGMA0 = 25/3 ≈ 8.33`: Incertidumbre inicial
+- `BETA = 25/6 ≈ 4.17`: Ruido de performance
+- `TAU = 25/300 ≈ 0.083`: Factor dinámico (evita que σ→0)
+
+### Cálculo del Rating Visible
+```
+rating_display = tsScaleToDisplay(μ_adjusted)
+μ_adjusted = μ + (k/N - 1) × σ
+```
+Donde `k` = jornadas asistidas, `N` = total jornadas del torneo.
+Se escala a base ~1000: `display = (μ/50)*1000 + 500`
+
+### Funciones Clave
+- `computeGlobalStats()`: Recalcula TODO el ranking desde el historial. Recorre jornadas cronológicamente, aplica TrueSkill a cada partido 2v2, y devuelve rankings/parejas/asistencia.
+- `normalPdf()`, `normalCdf()`, `tsVFunction()`, `tsWFunction()`: Funciones matemáticas de la distribución normal necesarias para TrueSkill.
+- `getEloRankInfo(elo)`: Devuelve badge/color según el rating (Diamante ≥1150, Oro ≥1080, Plata ≥1020, Bronce ≥960, Hierro <960).
+
 ## ⚙️ Reglas Importantes de Desarrollo
 1. **Diseño Premium**: El CSS está muy pulido con glassmorphism, gradientes, bordes sutiles y modo oscuro. Al agregar componentes, respeta las variables CSS existentes (ej: `var(--accent)`, `var(--bg-card)`) y las clases como `.card`, `.btn`, `.btn-primary`.
 2. **Resiliencia Offline**: Todas las acciones de red deben manejarse amigablemente. Usa `withSync(() => ...)` para mostrar feedback al usuario de la actividad de red.
 3. **Vanilla Pura**: No agregues librerías externas ni utilices JSX. Los componentes se renderizan mediante Template Literals (`` `...` ``).
 
 ---
-*Última actualización: Mayo 2026*
+*Última actualización: Junio 2026*

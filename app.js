@@ -321,8 +321,8 @@ function openNovedadesModal() {
       </div>
       
       <div class="card" style="margin-bottom:12px; padding:12px; border-left:4px solid var(--amber);">
-        <strong style="color:var(--text-primary); font-size:0.95rem;">🏅 Ranking ELO</strong><br>
-        Las estadísticas ahora usan un sistema de Elo competitivo (como en ajedrez). Comienzas en 1000 puntos y subes o bajas dependiendo de contra quién ganes o pierdas, y <em>también afecta la diferencia de games</em>.
+        <strong style="color:var(--text-primary); font-size:0.95rem;">🏅 Ranking TrueSkill</strong><br>
+        Las estadísticas usan <strong>TrueSkill</strong>, un sistema bayesiano que modela tu habilidad (μ) e incertidumbre (σ). A más partidos, más preciso. <em>Además se penaliza la inasistencia</em>.
       </div>
       
       <div class="card" style="margin-bottom:12px; padding:12px; border-left:4px solid var(--green);">
@@ -371,7 +371,7 @@ function renderNoSession(c) {
       <div style="font-size: 0.8rem; font-weight: 800; background: rgba(255,255,255,0.2); padding: 4px 10px; border-radius: 20px; letter-spacing: 1px;">ROTA-PÁDEL v2.0</div>
       <div>
         <h2 style="font-size: 1.8rem; font-weight: 900; margin-bottom: 6px;">¡Bienvenido!</h2>
-        <p style="font-size: 0.9rem; color: rgba(255,255,255,0.9); line-height: 1.5; max-width: 280px;">Crea fixtures instantáneos, anota resultados en cualquier orden y compite en el nuevo sistema de Ranking Elo.</p>
+        <p style="font-size: 0.9rem; color: rgba(255,255,255,0.9); line-height: 1.5; max-width: 280px;">Crea fixtures instantáneos, anota resultados en cualquier orden y compite en el sistema de Ranking TrueSkill.</p>
       </div>
       <button class="btn" onclick="startSetupFlow()" style="background: white; color: var(--accent); width: 100%; max-width: 240px; margin-top: 12px; border-radius: 999px; box-shadow: 0 4px 12px rgba(0,0,0,0.2); font-size: 1.05rem; font-weight: 800; padding: 14px;">⚡ Iniciar Nueva Jornada</button>
     </div>
@@ -402,45 +402,51 @@ function renderNoSession(c) {
       <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:12px;">
         <div style="display:flex; align-items:center; gap:8px;">
           <span style="font-size:1.4rem;">🏅</span>
-          <h3 style="font-size:1rem; font-weight:800; margin:0;">¿Cómo funciona el ELO?</h3>
+          <h3 style="font-size:1rem; font-weight:800; margin:0;">¿Cómo funciona el Rating?</h3>
         </div>
-        <button class="btn btn-ghost btn-sm" onclick="document.getElementById('elo-examples').style.display='block'; this.style.display='none';" style="font-size:0.75rem;">Ver Ejemplos ▼</button>
+        <button class="btn btn-ghost btn-sm" onclick="document.getElementById('elo-examples').style.display='block'; this.style.display='none';" style="font-size:0.75rem;">Ver Detalles ▼</button>
       </div>
       <p style="font-size:0.85rem; color:var(--text-secondary); line-height:1.5; margin-bottom:12px;">
-        El ranking usa el sistema <strong>Elo</strong>. Ganarle a rivales más fuertes (o por mayor diferencia de games) te da más puntos. Si pierdes siendo el favorito, bajas drásticamente.
+        El ranking usa <strong>TrueSkill</strong>, un sistema bayesiano. Cada jugador tiene una habilidad estimada (μ) y una incertidumbre (σ). Ganarle a mejores rivales o por mayor diferencia de games te sube más. <strong>Si no asistís, tu rating baja proporcionalmente.</strong>
       </p>
       
       <div id="elo-examples" style="display:none; background:var(--bg-card); border-radius:var(--radius-sm); border:1px solid var(--border); padding:12px; margin-top:12px;">
-        <p style="font-size:0.8rem; font-weight:700; color:var(--text-primary); margin-bottom:8px;">Fórmula Matemática Exacta:</p>
-        <div style="font-size:0.75rem; color:var(--text-secondary); background:var(--bg-body); padding:8px; border-radius:6px; margin-bottom:12px; font-family:monospace; line-height:1.4;">
-<span style="color:var(--accent);">Puntos Extra (Margen de Victoria):</span>
-M = log(Diferencia de Games + 1) + 1
+        <p style="font-size:0.8rem; font-weight:700; color:var(--text-primary); margin-bottom:8px;">Fórmula del Rating:</p>
+        <div style="font-size:0.75rem; color:var(--text-secondary); background:var(--bg-body); padding:8px; border-radius:6px; margin-bottom:12px; font-family:monospace; line-height:1.6;">
+<span style="color:var(--accent);">Habilidad (TrueSkill):</span>
+Cada jugador = N(μ, σ)
+μ sube al ganar, baja al perder
+σ baja con más partidos (más confianza)
 
-<span style="color:var(--accent);">Variación de Elo (Δ):</span>
-Δ = 32 × M × (Resultado Real - Probabilidad Esperada)
+<span style="color:var(--accent);">Penalización Asistencia:</span>
+Rating = μ + (k/N − 1) × σ
+k = jornadas asistidas, N = total jornadas
+
+<span style="color:var(--accent);">Margen de Victoria:</span>
+M = log(|score₁ − score₂| + 1) + 1
         </div>
         
-        <p style="font-size:0.8rem; font-weight:700; color:var(--text-primary); margin-bottom:8px;">Ejemplos Matemáticos (Base 1000):</p>
+        <p style="font-size:0.8rem; font-weight:700; color:var(--text-primary); margin-bottom:8px;">¿Cómo afecta?</p>
         
         <div style="display:flex; flex-direction:column; gap:8px;">
           <div style="font-size:0.75rem; padding:8px; border-radius:6px; background:rgba(34,197,94,0.1); border:1px solid rgba(34,197,94,0.2);">
-            <strong style="color:var(--green);">Ganas 6 - 0 vs Pareja Igual (1000 pts)</strong><br>
-            <span style="color:var(--text-secondary);">Diferencia: 6 games → Ganas <strong>+25.3 pts</strong>. Tu Elo sube a 1025.</span>
-          </div>
-          
-          <div style="font-size:0.75rem; padding:8px; border-radius:6px; background:rgba(245,158,11,0.1); border:1px solid rgba(245,158,11,0.2);">
-            <strong style="color:var(--amber);">Ganas 6 - 5 vs Pareja Igual (1000 pts)</strong><br>
-            <span style="color:var(--text-secondary);">Diferencia: 1 game → Ganas <strong>+14.6 pts</strong>. Tu Elo sube a 1015.</span>
+            <strong style="color:var(--green);">Ganás por goleada (6-0)</strong><br>
+            <span style="color:var(--text-secondary);">El margen amplifica la subida de μ. Subís mucho más que ganando 6-5.</span>
           </div>
           
           <div style="font-size:0.75rem; padding:8px; border-radius:6px; background:rgba(59,130,246,0.1); border:1px solid rgba(59,130,246,0.2);">
-            <strong style="color:var(--accent);">Das el batacazo (1000 pts vs 1100 pts)</strong><br>
-            <span style="color:var(--text-secondary);">Ganas 6 - 3 → Ganas <strong>+33.5 pts</strong> (por rival difícil y dif. de games).</span>
+            <strong style="color:var(--accent);">Le ganás a alguien mejor</strong><br>
+            <span style="color:var(--text-secondary);">TrueSkill te premia más por vencer a rivales con μ más alto (sorpresa estadística).</span>
+          </div>
+          
+          <div style="font-size:0.75rem; padding:8px; border-radius:6px; background:rgba(245,158,11,0.1); border:1px solid rgba(245,158,11,0.2);">
+            <strong style="color:var(--amber);">Faltás a jornadas</strong><br>
+            <span style="color:var(--text-secondary);">Si asististe a 3 de 6 jornadas (50%), tu rating se penaliza restando σ/2. <strong>Venir es clave.</strong></span>
           </div>
           
           <div style="font-size:0.75rem; padding:8px; border-radius:6px; background:rgba(239,68,68,0.1); border:1px solid rgba(239,68,68,0.2);">
-            <strong style="color:var(--red);">Pierdes siendo favorito (1100 pts vs 1000 pts)</strong><br>
-            <span style="color:var(--text-secondary);">Pierdes 4 - 6 → Pierdes <strong>-23.7 pts</strong> porque se esperaba que ganaras.</span>
+            <strong style="color:var(--red);">Pocos partidos = alta incertidumbre</strong><br>
+            <span style="color:var(--text-secondary);">Al principio σ es alto (poca info). Con más partidos σ baja y tu rating se estabiliza.</span>
           </div>
         </div>
       </div>
@@ -459,7 +465,7 @@ function renderPodium(player, position, medalClass, height) {
       <div class="stat-avatar" style="background:${player.color}; border:2px solid var(--bg-card); z-index:2; margin-bottom:-10px;">${initials(player.name)}</div>
       <div style="background: ${bg[medalClass]}; width: 100%; max-width: 58px; height: ${height}; border-radius: 8px 8px 0 0; display:flex; flex-direction:column; align-items:center; justify-content:flex-start; padding-top:12px; position:relative; box-shadow: inset 0 2px 5px rgba(255,255,255,0.2);">
         <span style="font-size:1.15rem; filter: drop-shadow(0 2px 2px rgba(0,0,0,0.3));">${medals[position]}</span>
-        <span style="font-weight:900; color:white; font-size:0.75rem; margin-top:4px;">${Math.round(player.elo)} ELO</span>
+        <span style="font-weight:900; color:white; font-size:0.75rem; margin-top:4px;">${Math.round(player.elo)} Pts</span>
       </div>
       <div style="font-size:0.72rem; font-weight:700; color:var(--text-secondary); margin-top:8px; text-transform:uppercase; max-width:60px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${escHtml(player.name)}</div>
     </div>
@@ -673,7 +679,7 @@ function renderActiveSession(c) {
 
   html += `
   <div style="margin-top:24px; margin-bottom: 24px;">
-    <button class="btn btn-green btn-full" onclick="promptFinishSession()" style="padding:16px; font-size:1.1rem; font-weight:900; box-shadow:0 6px 20px rgba(16,185,129,0.3);">✅ Guardar y Calcular ELO</button>
+    <button class="btn btn-green btn-full" onclick="promptFinishSession()" style="padding:16px; font-size:1.1rem; font-weight:900; box-shadow:0 6px 20px rgba(16,185,129,0.3);">✅ Guardar y Calcular Rating</button>
     <button class="btn btn-ghost btn-full" onclick="confirmCancelSession()" style="margin-top:8px; color:var(--red);">Cancelar Jornada</button>
   </div>`;
 
@@ -836,7 +842,7 @@ async function finishSession() {
 
   closeModal();
   renderPage();
-  showToast('🏆 ¡Jornada finalizada y ELO calculado!');
+  showToast('🏆 ¡Jornada finalizada y Rating calculado!');
 }
 
 function renderSessionEnd(c) {
@@ -1243,9 +1249,11 @@ function switchStatTab(tab, btn) {
 function renderStatTab(c, tab, stats) {
   c.innerHTML = ''; c.className = 'gap-12';
   if (tab === 'ranking') {
-    c.innerHTML = `<p class="section-title">🏆 Ranking Elo</p><div class="card">${stats.ranking.map((r, i) => {
+    c.innerHTML = `<p class="section-title">🏆 Ranking TrueSkill</p><div class="card">${stats.ranking.map((r, i) => {
       const rankInfo = getEloRankInfo(r.elo);
-      return `<div class="stat-row"><div class="stat-pos ${i === 0 ? 'gold' : i === 1 ? 'silver' : i === 2 ? 'bronze' : ''}">${i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : i + 1}</div><div class="stat-avatar" style="background:${r.color}">${initials(r.name)}</div><div style="flex:1;min-width:0"><div class="stat-name">${escHtml(r.name)}</div><div style="font-size:0.75rem; color:${rankInfo.color}; margin-top:4px; font-weight:700;">${rankInfo.badge} - ${Math.round(r.elo)} Pts</div></div><div style="text-align:right"><div class="stat-val" style="font-size:1.1rem">${r.wins} v</div><div class="stat-unit" style="font-size:0.75rem">en ${r.matches} pj</div></div></div>`;
+      const penaltyHtml = r.penalty < 0 ? `<span style="font-size:0.65rem; color:var(--red); margin-left:4px;">(${r.penalty} asist.)</span>` : '';
+      const sigmaHtml = `<span style="font-size:0.65rem; color:var(--text-muted); margin-left:4px;">σ=${r.sigma.toFixed(1)}</span>`;
+      return `<div class="stat-row"><div class="stat-pos ${i === 0 ? 'gold' : i === 1 ? 'silver' : i === 2 ? 'bronze' : ''}">${i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : i + 1}</div><div class="stat-avatar" style="background:${r.color}">${initials(r.name)}</div><div style="flex:1;min-width:0"><div class="stat-name">${escHtml(r.name)}</div><div style="font-size:0.75rem; color:${rankInfo.color}; margin-top:4px; font-weight:700;">${rankInfo.badge} - ${Math.round(r.elo)} Pts${penaltyHtml}${sigmaHtml}</div></div><div style="text-align:right"><div class="stat-val" style="font-size:1.1rem">${r.wins} v</div><div class="stat-unit" style="font-size:0.75rem">en ${r.matches} pj</div></div></div>`;
     }).join('')}</div>`;
   } else if (tab === 'games') {
     const max = stats.gamesRanking[0]?.games || 1;
@@ -1315,7 +1323,7 @@ function renderStatTab(c, tab, stats) {
 
     c.innerHTML = `
       <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px;">
-        <p class="section-title" style="margin:0;">📈 Evolución ELO</p>
+        <p class="section-title" style="margin:0;">📈 Evolución Rating</p>
         <div style="display:flex; gap:6px;">
           <button style="${btnStyle('all')}" onclick="setChartFilter('all')">Todos</button>
           <button style="${btnStyle('top5')}" onclick="setChartFilter('top5')">Top 5</button>
@@ -1372,14 +1380,47 @@ function getActiveHistory() {
   return state.history.filter(h => h.id_torneo === state.activeTorneo || (!h.id_torneo && state.activeTorneo === 'torneo_inicial'));
 }
 
+// ═══ TRUESKILL MATH HELPERS ═══════════════════════════════════════════
+const TS = { MU0: 25, SIGMA0: 25 / 3, BETA: 25 / 6, TAU: 25 / 300 };
+
+function normalPdf(x) { return Math.exp(-0.5 * x * x) / Math.sqrt(2 * Math.PI); }
+
+function normalCdf(x) {
+  // Abramowitz & Stegun approximation (precision ~1.5e-7)
+  const a1 = 0.254829592, a2 = -0.284496736, a3 = 1.421413741, a4 = -1.453152027, a5 = 1.061405429, p = 0.3275911;
+  const sign = x < 0 ? -1 : 1;
+  const t = 1.0 / (1.0 + p * Math.abs(x));
+  const y = 1 - (((((a5 * t + a4) * t) + a3) * t + a2) * t + a1) * t * Math.exp(-x * x / 2);
+  return 0.5 * (1 + sign * y);
+}
+
+function tsVFunction(t) {
+  // v(t) = N(t) / Φ(t) — truncated Gaussian correction for mean
+  const denom = normalCdf(t);
+  if (denom < 1e-15) return -t; // Numerical stability for very negative t
+  return normalPdf(t) / denom;
+}
+
+function tsWFunction(t) {
+  // w(t) = v(t) * (v(t) + t) — truncated Gaussian correction for variance
+  const v = tsVFunction(t);
+  return v * (v + t);
+}
+
+function tsScaleToDisplay(mu) {
+  // Escalar μ (escala TrueSkill ~0-50) a display ~500-1500 centrado en 1000
+  return (mu / 50) * 1000 + 500;
+}
+
 function computeGlobalStats() {
   const ps = {}, pairs = {};
 
   state.players.forEach(p => {
-    ps[p.id] = { wins: 0, matches: 0, games: 0, sessions: 0, elo: 1000, eloHistory: [{ date: 'Inicio', elo: 1000 }] };
+    ps[p.id] = { wins: 0, matches: 0, games: 0, sessions: 0, mu: TS.MU0, sigma: TS.SIGMA0, eloHistory: [{ date: 'Inicio', elo: tsScaleToDisplay(TS.MU0) }] };
   });
 
   const history = getActiveHistory().sort((a, b) => new Date(a.date) - new Date(b.date));
+  const totalSessions = history.length;
 
   for (const session of history) {
     let att = session.attendees;
@@ -1394,7 +1435,7 @@ function computeGlobalStats() {
       att = [...attSet];
     }
     for (const id of att) {
-      if (!ps[id]) ps[id] = { wins: 0, matches: 0, games: 0, sessions: 0, elo: 1000, eloHistory: [{ date: 'Inicio', elo: 1000 }] };
+      if (!ps[id]) ps[id] = { wins: 0, matches: 0, games: 0, sessions: 0, mu: TS.MU0, sigma: TS.SIGMA0, eloHistory: [{ date: 'Inicio', elo: tsScaleToDisplay(TS.MU0) }] };
       ps[id].sessions++;
     }
     const matches = [...session.matches].sort((a, b) => a.matchIndex - b.matchIndex);
@@ -1406,32 +1447,63 @@ function computeGlobalStats() {
       const t2 = m.team2.filter(id => ps[id]);
       if (t1.length === 0 || t2.length === 0) continue;
 
-      const elo1 = t1.reduce((sum, id) => sum + ps[id].elo, 0) / t1.length;
-      const elo2 = t2.reduce((sum, id) => sum + ps[id].elo, 0) / t2.length;
+      // Agregar dynamic factor τ (previene que σ converja a 0)
+      for (const id of [...t1, ...t2]) {
+        ps[id].sigma = Math.sqrt(ps[id].sigma * ps[id].sigma + TS.TAU * TS.TAU);
+      }
 
-      const r1 = Math.pow(10, elo1 / 400);
-      const r2 = Math.pow(10, elo2 / 400);
-      const e1 = r1 / (r1 + r2);
-      const e2 = r2 / (r1 + r2);
+      // Calcular μ y σ² de cada equipo (suma)
+      const muTeam1 = t1.reduce((s, id) => s + ps[id].mu, 0);
+      const muTeam2 = t2.reduce((s, id) => s + ps[id].mu, 0);
+      const sigSqTeam1 = t1.reduce((s, id) => s + ps[id].sigma * ps[id].sigma, 0);
+      const sigSqTeam2 = t2.reduce((s, id) => s + ps[id].sigma * ps[id].sigma, 0);
 
-      let s1 = 0.5, s2 = 0.5;
-      if (m.score1 > m.score2) { s1 = 1; s2 = 0; }
-      else if (m.score2 > m.score1) { s1 = 0; s2 = 1; }
+      // c² = σ²_team1 + σ²_team2 + 2β²
+      const cSq = sigSqTeam1 + sigSqTeam2 + 2 * TS.BETA * TS.BETA;
+      const c = Math.sqrt(cSq);
 
-      const diff = Math.abs(m.score1 - m.score2);
-      const mov = Math.log(diff + 1) + 1;
-      const K = 32;
-
-      const delta1 = K * mov * (s1 - e1);
-      const delta2 = K * mov * (s2 - e2);
-
+      // Determinar ganador/perdedor y calcular t = (μ_winner - μ_loser) / c
       const t1w = m.score1 > m.score2, t2w = m.score2 > m.score1;
+      const isDraw = m.score1 === m.score2;
+
+      // Factor de margen de victoria: escala el update por la diferencia de games
+      const scoreDiff = Math.abs(m.score1 - m.score2);
+      const marginFactor = Math.log(scoreDiff + 1) + 1; // 1.0 (empate) a ~2.95 (diff=6)
+
+      if (!isDraw) {
+        // Victoria/Derrota
+        const muW = t1w ? muTeam1 : muTeam2;
+        const muL = t1w ? muTeam2 : muTeam1;
+        const t = (muW - muL) / c;
+
+        const v = tsVFunction(t);
+        const w = tsWFunction(t);
+
+        // Actualizar ganadores
+        const winners = t1w ? t1 : t2;
+        const losers = t1w ? t2 : t1;
+
+        for (const id of winners) {
+          const sigSq = ps[id].sigma * ps[id].sigma;
+          ps[id].mu += (sigSq / c) * v * marginFactor;
+          const newSigSq = sigSq * (1 - (sigSq / cSq) * w);
+          ps[id].sigma = Math.sqrt(Math.max(newSigSq, 0.01));
+        }
+
+        for (const id of losers) {
+          const sigSq = ps[id].sigma * ps[id].sigma;
+          ps[id].mu -= (sigSq / c) * v * marginFactor;
+          const newSigSq = sigSq * (1 - (sigSq / cSq) * w);
+          ps[id].sigma = Math.sqrt(Math.max(newSigSq, 0.01));
+        }
+      }
+      // En empate no actualizamos (en pádel prácticamente no ocurre)
 
       for (const id of m.team1) {
-        if (ps[id]) { ps[id].matches++; if (t1w) ps[id].wins++; ps[id].games += m.score1; ps[id].elo += delta1; }
+        if (ps[id]) { ps[id].matches++; if (t1w) ps[id].wins++; ps[id].games += m.score1; }
       }
       for (const id of m.team2) {
-        if (ps[id]) { ps[id].matches++; if (t2w) ps[id].wins++; ps[id].games += m.score2; ps[id].elo += delta2; }
+        if (ps[id]) { ps[id].matches++; if (t2w) ps[id].wins++; ps[id].games += m.score2; }
       }
 
       const proc = (team, won) => {
@@ -1442,21 +1514,31 @@ function computeGlobalStats() {
       proc(m.team1, t1w); proc(m.team2, t2w);
     }
 
-    // Al final de la jornada, guardar el Elo resultante para TODOS los jugadores,
+    // Al final de la jornada, guardar el rating resultante para TODOS los jugadores,
     // incluso si estuvieron ausentes, para que su linea avance recta en el grafico.
     Object.keys(ps).forEach(id => {
-      ps[id].eloHistory.push({ date: session.date, elo: ps[id].elo });
+      ps[id].eloHistory.push({ date: session.date, elo: tsScaleToDisplay(ps[id].mu) });
     });
   }
 
   const ids = [...new Set([...state.players.map(p => p.id), ...Object.keys(ps)])];
   const row = id => {
     const p = playerById(id);
-    const s = ps[id] || { wins: 0, matches: 0, games: 0, sessions: 0, elo: 1000, eloHistory: [] };
+    const s = ps[id] || { wins: 0, matches: 0, games: 0, sessions: 0, mu: TS.MU0, sigma: TS.SIGMA0, eloHistory: [] };
     let createdAt = 0;
     if (id && id.length > 5) { const ts = parseInt(id.slice(0, -5), 36); if (!isNaN(ts) && ts > 1600000000000) createdAt = ts - 86400000; }
     let possible = 0; for (const j of history) { if (new Date(j.date).getTime() >= createdAt) possible++; }
-    return { id, name: p?.name || '(Eliminado)', color: p?.color || '#888', possible, eloHistory: s.eloHistory || [], ...s };
+
+    // Penalización por asistencia: rating = μ + (k/N - 1) · σ
+    const k = s.sessions;
+    const N = totalSessions > 0 ? totalSessions : 1;
+    const attendanceRatio = k / N; // 0..1
+    const muAdjusted = s.mu + (attendanceRatio - 1) * s.sigma;
+    const elo = tsScaleToDisplay(muAdjusted);
+    const eloPure = tsScaleToDisplay(s.mu); // Sin penalización, para info
+    const penalty = Math.round(elo - eloPure); // Negativo si falta asistencia
+
+    return { id, name: p?.name || '(Eliminado)', color: p?.color || '#888', possible, eloHistory: s.eloHistory || [], elo, eloPure, mu: s.mu, sigma: s.sigma, penalty, attendanceRatio, ...s };
   };
 
   return {
@@ -1468,9 +1550,10 @@ function computeGlobalStats() {
 }
 
 function getEloRankInfo(elo) {
-  if (elo >= 1200) return { badge: 'Oro 🏆', color: 'var(--amber)', bg: 'rgba(245, 158, 11, 0.1)' };
-  if (elo >= 1100) return { badge: 'Plata 🥈', color: 'var(--text-primary)', bg: 'rgba(148, 163, 184, 0.1)' };
-  if (elo >= 1000) return { badge: 'Bronce 🥉', color: 'var(--orange)', bg: 'rgba(249, 115, 22, 0.1)' };
+  if (elo >= 1150) return { badge: 'Diamante 💎', color: 'var(--cyan)', bg: 'rgba(6, 182, 212, 0.1)' };
+  if (elo >= 1080) return { badge: 'Oro 🏆', color: 'var(--amber)', bg: 'rgba(245, 158, 11, 0.1)' };
+  if (elo >= 1020) return { badge: 'Plata 🥈', color: 'var(--text-primary)', bg: 'rgba(148, 163, 184, 0.1)' };
+  if (elo >= 960) return { badge: 'Bronce 🥉', color: 'var(--orange)', bg: 'rgba(249, 115, 22, 0.1)' };
   return { badge: 'Hierro ⛓️', color: 'var(--text-muted)', bg: 'var(--bg-input)' };
 }
 
