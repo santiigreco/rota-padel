@@ -1300,7 +1300,14 @@ function switchStatTab(tab, btn) {
 function renderStatTab(c, tab, stats) {
   c.innerHTML = ''; c.className = 'gap-12';
   if (tab === 'ranking') {
-    c.innerHTML = `<p class="section-title">🏆 Ranking Método Nuco Flocco</p><div class="card">${stats.ranking.map((r, i) => {
+    c.innerHTML = `
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
+        <p class="section-title" style="margin:0;">🏆 Ranking Método Nuco Flocco</p>
+        <button class="btn btn-ghost btn-sm" onclick="copyRankingToClipboard()" style="font-size:0.75rem; padding:4px 10px; color:var(--green); border: 1px solid var(--border); background: var(--bg-card);">
+          <span style="margin-right:4px;">💬</span>Copiar para WA
+        </button>
+      </div>
+      <div class="card">${stats.ranking.map((r, i) => {
       const rankInfo = getEloRankInfo(r.elo);
       const penaltyHtml = r.penalty < -1 ? `<span style="font-size:0.65rem; color:var(--red); margin-left:4px;">📉 ${r.penalty} por faltas</span>` : '';
       return `<div class="stat-row"><div class="stat-pos ${i === 0 ? 'gold' : i === 1 ? 'silver' : i === 2 ? 'bronze' : ''}">${i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : i + 1}</div><div class="stat-avatar" style="background:${r.color}">${initials(r.name)}</div><div style="flex:1;min-width:0"><div class="stat-name">${escHtml(r.name)}</div><div style="font-size:0.75rem; color:${rankInfo.color}; margin-top:4px; font-weight:700;">${rankInfo.badge} - ${Math.round(r.elo)} Pts${penaltyHtml}</div></div><div style="text-align:right"><div class="stat-val" style="font-size:1.1rem">${r.wins} v</div><div class="stat-unit" style="font-size:0.75rem">en ${r.matches} pj</div></div></div>`;
@@ -1558,6 +1565,26 @@ function toggleChartPlayer(id) {
   state.chartHidden[id] = !state.chartHidden[id];
   const c = document.getElementById('stats-tab-content');
   if (c) renderStatTab(c, 'chart', computeGlobalStats());
+}
+function copyRankingToClipboard() {
+  const stats = computeGlobalStats();
+  const tName = state.torneos.find(t => t.id === state.activeTorneo)?.name || 'General';
+  let text = `🏆 *Ranking RotaPádel - ${tName}* 🏆\n\n`;
+  stats.ranking.forEach((r, i) => {
+    const pos = i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : `${i + 1}.`;
+    const rankInfo = getEloRankInfo(r.elo);
+    const badge = rankInfo.badge.split(' ')[0];
+    text += `${pos} *${r.name}* - ${Math.round(r.elo)} pts (${badge})\n`;
+  });
+  text += '\nGenerado por RotaPádel Método Nuco Flocco';
+
+  navigator.clipboard.writeText(text).then(() => {
+    if(typeof showToast === 'function') showToast('✅ Ranking copiado al portapapeles');
+    else alert('✅ Ranking copiado al portapapeles');
+  }).catch(() => {
+    if(typeof showToast === 'function') showToast('❌ Error al copiar (Intenta desde https)');
+    else alert('❌ Error al copiar');
+  });
 }
 
 function getActiveHistory() {
