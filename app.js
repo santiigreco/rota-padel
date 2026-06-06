@@ -22,6 +22,7 @@ const API = {
   async deleteJornada(id) { return this.request('deleteJornada', { id }); },
   async saveJornada(j) { return this.request('saveJornada', { data: encodeURIComponent(JSON.stringify(j)) }); },
   async savePartido(p) { return this.request('savePartido', { data: encodeURIComponent(JSON.stringify(p)) }); },
+  async savePartidos(ps) { return this.request('savePartidos', { data: encodeURIComponent(JSON.stringify(ps)) }); },
   async saveTorneo(t) { return this.request('saveTorneo', { data: encodeURIComponent(JSON.stringify(t)) }); },
   async deleteTorneo(id) { return this.request('deleteTorneo', { id }); },
 };
@@ -787,8 +788,7 @@ async function finishSession() {
 
   setSyncStatus('syncing');
   try {
-    const matchPromises = s.matches.map(p => API.savePartido(p));
-    await Promise.all(matchPromises);
+    await API.savePartidos(s.matches);
 
     await API.saveJornada({ id: s.id, id_torneo: state.activeTorneo, fecha: s.date, games_format: s.gamesFormat, attendees: s.attendees, finished: true });
     setSyncStatus('idle');

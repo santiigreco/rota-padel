@@ -235,10 +235,94 @@ function savePartido(data) {
   return { saved: obj.id };
 }
 
+function savePartidos(dataArray) {
+  const sheet = getSheet(SHEETS.PARTIDOS);
+  const hdrs = HEADERS[SHEETS.PARTIDOS];
+  const newRows = [];
+  
+  dataArray.forEach(data => {
+    const obj = {
+      id:          String(data.id),
+      id_jornada:  String(data.id_jornada || data.jornadaId),
+      team1_p1:    String(data.team1_p1 || (data.team1 && data.team1[0]) || ''),
+      team1_p2:    String(data.team1_p2 || (data.team1 && data.team1[1]) || ''),
+      team2_p1:    String(data.team2_p1 || (data.team2 && data.team2[0]) || ''),
+      team2_p2:    String(data.team2_p2 || (data.team2 && data.team2[1]) || ''),
+      score1:      parseInt(data.score1) || 0,
+      score2:      parseInt(data.score2) || 0,
+      skipped:     data.skipped ? 'TRUE' : 'FALSE',
+      match_index: parseInt(data.match_index || data.matchIndex) || 0,
+    };
+    
+    const rowNum = findRowById(sheet, obj.id);
+    const values = hdrs.map(h => (obj[h] !== undefined && obj[h] !== null) ? obj[h] : '');
+    
+    if (rowNum > 0) {
+      sheet.getRange(rowNum, 1, 1, values.length).setValues([values]);
+    } else {
+      newRows.push(values);
+    }
+  });
+  
+  if (newRows.length > 0) {
+    sheet.getRange(sheet.getLastRow() + 1, 1, newRows.length, hdrs.length).setValues(newRows);
+  }
+  SpreadsheetApp.flush();
+  return { savedCount: dataArray.length };
+}
+
+function fixHeadersMigration() {
+  const ss = getSpreadsheet();
+  
+  const sheetJ = ss.getSheetByName(SHEETS.JORNADAS);
+  if (sheetJ) {
+    const data = sheetJ.getDataRange().getValues();
+    if (data.length > 0) {
+      const headers = data[0].map(String);
+      if (headers[1] === 'fecha') {
+        const newHeaders = HEADERS[SHEETS.JORNADAS];
+        const newData = [newHeaders];
+        for (let i = 1; i < data.length; i++) {
+          const row = data[i];
+          if (!row[0]) continue;
+          
+          let isNewFormat = false;
+          if (String(row[1]).includes('torneo') || String(row[1]) === 'torneo_inicial' || (isNaN(Date.parse(row[1])) && !String(row[1]).includes('-'))) {
+             isNewFormat = true;
+          }
+          if (isNewFormat) {
+             newData.push([row[0], row[1], row[2], row[3], row[4], row[5] !== undefined ? row[5] : '']);
+          } else {
+             newData.push([row[0], 'torneo_inicial', row[1], row[2], row[3], row[4] !== undefined ? row[4] : '']);
+          }
+        }
+        sheetJ.clearContents();
+        sheetJ.getRange(1, 1, newData.length, newHeaders.length).setValues(newData);
+        sheetJ.setFrozenRows(1);
+        sheetJ.getRange(1, 1, 1, newHeaders.length).setFontWeight('bold').setBackground('#1a2234').setFontColor('#60a5fa');
+      } else if (headers.length < HEADERS[SHEETS.JORNADAS].length) {
+         sheetJ.getRange(1, 1, 1, HEADERS[SHEETS.JORNADAS].length).setValues([HEADERS[SHEETS.JORNADAS]]);
+      }
+    }
+  }
+
+  const sheetP = ss.getSheetByName(SHEETS.PARTIDOS);
+  if (sheetP) {
+    const data = sheetP.getDataRange().getValues();
+    if (data.length > 0) {
+      const headers = data[0].map(String);
+      if (headers.length < HEADERS[SHEETS.PARTIDOS].length) {
+        sheetP.getRange(1, 1, 1, HEADERS[SHEETS.PARTIDOS].length).setValues([HEADERS[SHEETS.PARTIDOS]]);
+      }
+    }
+  }
+}
+
 // ─── Punto de entrada ─────────────────────────────────────────────────────────
 
 function doGet(e) {
   try {
+    fixHeadersMigration();
     const p      = e.parameter || {};
     const action = p.action || '';
     let result;
@@ -267,6 +351,9 @@ function doGet(e) {
         break;
       case 'savePartido':
         result = savePartido(JSON.parse(decodeURIComponent(p.data)));
+        break;
+      case 'savePartidos':
+        result = savePartidos(JSON.parse(decodeURIComponent(p.data)));
         break;
       case 'ping':
         result = { pong: true, time: new Date().toISOString() };
