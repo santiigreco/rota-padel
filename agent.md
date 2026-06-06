@@ -66,7 +66,7 @@ Se escala a base ~1000: `display = (μ/50)*1000 + 500`
 - `computeGlobalStats()`: Recalcula TODO el ranking desde el historial del torneo activo. Recorre jornadas cronológicamente, aplica TrueSkill a cada partido 2v2, y devuelve rankings/parejas/asistencia.
 - `getSessionEloDeltas(id)`: Extrae del historial global cuánto ELO sumó o restó cada jugador en una jornada específica para coronar al MVP (Batacazo) del día.
 - `normalPdf()`, `normalCdf()`, `tsVFunction()`, `tsWFunction()`: Funciones matemáticas de la distribución normal necesarias para TrueSkill.
-- `getEloRankInfo(elo)`: Devuelve badge/color según el rating (Diamante ≥1150, Oro ≥1080, Plata ≥1020, Bronce ≥960, Hierro <960).
+- `getEloRankInfo(elo)`: Devuelve badge/color según el rating (Diamante ≥1200, Oro ≥1000, Plata ≥900, Bronce ≥800, Hierro <800).
 
 ### Tab "📐 Fórmula" en Estadísticas
 La pestaña Fórmula en la página de estadísticas muestra toda la matemática del método con atribución a Nuco Flocco. Cualquier cambio en los parámetros o fórmulas debe reflejarse también ahí.

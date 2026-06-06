@@ -1735,10 +1735,10 @@ function computeGlobalStats() {
 }
 
 function getEloRankInfo(elo) {
-  if (elo >= 1150) return { badge: 'Diamante 💎', color: 'var(--cyan)', bg: 'rgba(6, 182, 212, 0.1)' };
-  if (elo >= 1080) return { badge: 'Oro 🏆', color: 'var(--amber)', bg: 'rgba(245, 158, 11, 0.1)' };
-  if (elo >= 1020) return { badge: 'Plata 🥈', color: 'var(--text-primary)', bg: 'rgba(148, 163, 184, 0.1)' };
-  if (elo >= 960) return { badge: 'Bronce 🥉', color: 'var(--orange)', bg: 'rgba(249, 115, 22, 0.1)' };
+  if (elo >= 1200) return { badge: 'Diamante 💎', color: 'var(--cyan)', bg: 'rgba(6, 182, 212, 0.1)' };
+  if (elo >= 1000) return { badge: 'Oro 🏆', color: 'var(--amber)', bg: 'rgba(245, 158, 11, 0.1)' };
+  if (elo >= 900) return { badge: 'Plata 🥈', color: 'var(--text-primary)', bg: 'rgba(148, 163, 184, 0.1)' };
+  if (elo >= 800) return { badge: 'Bronce 🥉', color: 'var(--orange)', bg: 'rgba(249, 115, 22, 0.1)' };
   return { badge: 'Hierro ⛓️', color: 'var(--text-muted)', bg: 'var(--bg-input)' };
 }
 
