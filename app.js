@@ -1426,9 +1426,9 @@ Para un partido Equipo A vs Equipo B:
               let dLabel = 'Inicio';
               if (dateStr !== 'Inicio') {
                 const d = new Date(dateStr);
-                dLabel = \`\${d.getDate()}/\${d.getMonth() + 1}\`;
+                dLabel = `${d.getDate()}/${d.getMonth() + 1}`;
               }
-              return \`<text x="\${x}" y="\${h + 18}" font-size="9" fill="var(--text-muted)" text-anchor="middle" font-weight="600">\${dLabel}</text>\`;
+              return `<text x="${x}" y="${h + 18}" font-size="9" fill="var(--text-muted)" text-anchor="middle" font-weight="600">${dLabel}</text>`;
             }
             return '';
           }).join('')}
