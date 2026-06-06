@@ -593,16 +593,23 @@ function renderActiveSession(c) {
           <span>Saltar</span>
         </label>
       </div>
-      <div style="display:flex; align-items:center; justify-content:space-between;">
-        <div style="flex:1; text-align:right; font-size:0.85rem; font-weight:600; line-height:1.3;">${escHtml(t1p1)}<br>${escHtml(t1p2)}</div>
-        
-        <div style="display:flex; align-items:center; gap:8px; margin:0 12px;">
-          <input type="number" class="input" style="width:48px; text-align:center; font-size:1.2rem; font-weight:800; padding:6px 0;" value="${m.score1 || 0}" min="0" onchange="updateFixtureScore(${i}, 1, this.value)" ${m.skipped ? 'disabled' : ''}>
-          <span style="color:var(--text-muted); font-size:0.8rem;">vs</span>
-          <input type="number" class="input" style="width:48px; text-align:center; font-size:1.2rem; font-weight:800; padding:6px 0;" value="${m.score2 || 0}" min="0" onchange="updateFixtureScore(${i}, 2, this.value)" ${m.skipped ? 'disabled' : ''}>
+      <div style="display:flex; flex-direction:column; gap:16px;">
+        <div style="display:flex; justify-content:space-between; align-items:center;">
+          <div style="font-size:0.9rem; font-weight:700; line-height:1.3; color:var(--text-primary); text-align:left;">${escHtml(t1p1)}<br>${escHtml(t1p2)}</div>
+          <div style="display:flex; align-items:center; background:var(--bg-input); border-radius:8px; overflow:hidden; border:1px solid var(--border); ${m.skipped ? 'opacity:0.5; pointer-events:none;' : ''}">
+            <button class="btn-ghost" style="padding:8px 16px; font-size:1.4rem; font-weight:800; border-right:1px solid var(--border);" onclick="changeFixtureScore(${i}, 1, -1)">-</button>
+            <div id="fs-${i}-1" style="width:40px; text-align:center; font-size:1.3rem; font-weight:900;">${m.score1 || 0}</div>
+            <button class="btn-ghost" style="padding:8px 16px; font-size:1.4rem; font-weight:800; border-left:1px solid var(--border);" onclick="changeFixtureScore(${i}, 1, 1)">+</button>
+          </div>
         </div>
-
-        <div style="flex:1; text-align:left; font-size:0.85rem; font-weight:600; line-height:1.3;">${escHtml(t2p1)}<br>${escHtml(t2p2)}</div>
+        <div style="display:flex; justify-content:space-between; align-items:center;">
+          <div style="font-size:0.9rem; font-weight:700; line-height:1.3; color:var(--text-primary); text-align:left;">${escHtml(t2p1)}<br>${escHtml(t2p2)}</div>
+          <div style="display:flex; align-items:center; background:var(--bg-input); border-radius:8px; overflow:hidden; border:1px solid var(--border); ${m.skipped ? 'opacity:0.5; pointer-events:none;' : ''}">
+            <button class="btn-ghost" style="padding:8px 16px; font-size:1.4rem; font-weight:800; border-right:1px solid var(--border);" onclick="changeFixtureScore(${i}, 2, -1)">-</button>
+            <div id="fs-${i}-2" style="width:40px; text-align:center; font-size:1.3rem; font-weight:900;">${m.score2 || 0}</div>
+            <button class="btn-ghost" style="padding:8px 16px; font-size:1.4rem; font-weight:800; border-left:1px solid var(--border);" onclick="changeFixtureScore(${i}, 2, 1)">+</button>
+          </div>
+        </div>
       </div>
       <div style="display:flex; justify-content:center; margin-top:12px;">
         <button class="btn btn-ghost btn-sm" onclick="openUpcomingMatchEditor(${i})" style="font-size:0.75rem; padding:4px 8px;">✏️ Editar Jugadores</button>
@@ -648,6 +655,18 @@ function updateFixtureScore(idx, team, val) {
     else state.session.fixture[idx].score2 = v;
     CACHE.set(CK.SESSION, state.session);
   }
+}
+
+function changeFixtureScore(idx, team, delta) {
+  const s = state.session;
+  if (!s || !s.fixture[idx] || s.fixture[idx].skipped) return;
+  const m = s.fixture[idx];
+  let v = (team === 1 ? m.score1 : m.score2) || 0;
+  v = Math.max(0, v + delta);
+  if (team === 1) m.score1 = v; else m.score2 = v;
+  CACHE.set(CK.SESSION, s);
+  const el = document.getElementById(`fs-${idx}-${team}`);
+  if (el) el.textContent = v;
 }
 
 function toggleFixtureSkip(idx) {
@@ -1118,15 +1137,19 @@ function editMatchScore(jId, mId) {
     <div class="score-row" style="margin-bottom:30px">
       <div>
         <div class="score-team" style="margin-bottom:12px">${escHtml(t1p1)}<br>& ${escHtml(t1p2)}</div>
-        <div class="score-num">
-          <input type="number" id="edit-score1" class="input" style="width:70px;text-align:center;font-size:1.6rem;font-weight:900" value="${m.score1}" min="0" max="${j.gamesFormat || 99}">
+        <div style="display:flex; align-items:center; justify-content:center; background:var(--bg-input); border-radius:8px; overflow:hidden; border:1px solid var(--border); margin:0 auto; max-width:140px;">
+          <button class="btn-ghost" style="padding:10px 16px; font-size:1.5rem; font-weight:bold; border-right:1px solid var(--border);" onclick="changeEditScore(1, -1)">-</button>
+          <div id="edit-score1" style="width:50px; text-align:center; font-size:1.6rem; font-weight:900;">${m.score1}</div>
+          <button class="btn-ghost" style="padding:10px 16px; font-size:1.5rem; font-weight:bold; border-left:1px solid var(--border);" onclick="changeEditScore(1, 1)">+</button>
         </div>
       </div>
       <div class="score-vs" style="margin-top:20px">VS</div>
       <div>
         <div class="score-team" style="margin-bottom:12px">${escHtml(t2p1)}<br>& ${escHtml(t2p2)}</div>
-        <div class="score-num">
-          <input type="number" id="edit-score2" class="input" style="width:70px;text-align:center;font-size:1.6rem;font-weight:900" value="${m.score2}" min="0" max="${j.gamesFormat || 99}">
+        <div style="display:flex; align-items:center; justify-content:center; background:var(--bg-input); border-radius:8px; overflow:hidden; border:1px solid var(--border); margin:0 auto; max-width:140px;">
+          <button class="btn-ghost" style="padding:10px 16px; font-size:1.5rem; font-weight:bold; border-right:1px solid var(--border);" onclick="changeEditScore(2, -1)">-</button>
+          <div id="edit-score2" style="width:50px; text-align:center; font-size:1.6rem; font-weight:900;">${m.score2}</div>
+          <button class="btn-ghost" style="padding:10px 16px; font-size:1.5rem; font-weight:bold; border-left:1px solid var(--border);" onclick="changeEditScore(2, 1)">+</button>
         </div>
       </div>
     </div>
@@ -1138,9 +1161,17 @@ function editMatchScore(jId, mId) {
   `);
 }
 
+function changeEditScore(team, delta) {
+  const el = document.getElementById(`edit-score${team}`);
+  if (!el) return;
+  let v = parseInt(el.textContent) || 0;
+  v = Math.max(0, v + delta);
+  el.textContent = v;
+}
+
 async function saveEditedMatch(jId, mId) {
-  const s1 = parseInt(document.getElementById('edit-score1').value) || 0;
-  const s2 = parseInt(document.getElementById('edit-score2').value) || 0;
+  const s1 = parseInt(document.getElementById('edit-score1').textContent) || 0;
+  const s2 = parseInt(document.getElementById('edit-score2').textContent) || 0;
 
   const j = state.history.find(x => x.id === jId); if (!j) return;
   const m = j.matches.find(x => x.id === mId); if (!m) return;
