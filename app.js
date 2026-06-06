@@ -947,6 +947,29 @@ async function deletePlayer(id) {
 }
 
 // ═══ HISTORY PAGE ══════════════════════════════════════════════════════
+function getSessionEloDeltas(id) {
+  const j = state.history.find(x => x.id === id);
+  if (!j) return [];
+  const stats = computeGlobalStats();
+  
+  const tHistory = state.history.filter(x => (state.activeTorneo ? x.id_torneo === state.activeTorneo : x.id_torneo === 'torneo_inicial'))
+                .sort((a,b) => new Date(a.date) - new Date(b.date));
+  const jIdx = tHistory.findIndex(x => x.id === id);
+  if (jIdx === -1) return [];
+  const histIdx = jIdx + 1; // eloHistory[0] is 'Inicio'
+
+  const deltas = j.attendees.map(pid => {
+    const pRank = stats.ranking.find(r => r.id === pid);
+    if (!pRank || !pRank.eloHistory || pRank.eloHistory.length <= histIdx) return null;
+    const eloAfter = pRank.eloHistory[histIdx].elo;
+    const eloBefore = pRank.eloHistory[histIdx - 1].elo;
+    const delta = eloAfter - eloBefore;
+    return { id: pid, name: pRank.name, color: pRank.color, delta, eloAfter, eloBefore };
+  }).filter(Boolean).sort((a, b) => b.delta - a.delta);
+
+  return deltas;
+}
+
 function renderHistoryPage(page) {
   const c = document.createElement('div'); c.className = 'page-padding gap-12';
   const history = getActiveHistory();
@@ -956,12 +979,20 @@ function renderHistoryPage(page) {
     const list = history.slice().reverse().map(j => {
       const date = new Date(j.date).toLocaleDateString('es-ES', { weekday: 'long', day: 'numeric', month: 'long' });
       const names = j.attendees.map(id => playerById(id)?.name || '?').join(', ');
+      
+      const deltas = getSessionEloDeltas(j.id);
+      let mvpBadge = '';
+      if (deltas.length > 0 && deltas[0].delta > 0) {
+        mvpBadge = `<div style="margin-top:8px; font-size:0.75rem; font-weight:700; color:var(--accent); background:rgba(59,130,246,0.1); padding:4px 8px; border-radius:12px; display:inline-block;">🌟 MVP: ${escHtml(deltas[0].name)} (+${Math.round(deltas[0].delta)} pts)</div>`;
+      }
+
       return `<div class="card" onclick="openJornadaDetails('${j.id}')" style="cursor:pointer">
         <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px">
           <div>
             <div style="font-size:0.95rem;font-weight:800;text-transform:capitalize;margin-bottom:4px;color:var(--text-primary)">${date}</div>
             <div style="font-size:0.8rem;color:var(--text-secondary);margin-bottom:6px">${j.matches.length} partidos · ${j.attendees.length} jugadores</div>
             <div style="font-size:0.75rem;color:var(--text-muted);display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden">${names}</div>
+            ${mvpBadge}
           </div>
           <button class="btn btn-icon btn-ghost btn-sm" style="flex-shrink:0">👁</button>
         </div>
@@ -993,25 +1024,29 @@ function openJornadaDetails(id) {
     proc(m.team1, t1w); proc(m.team2, t2w);
   }
 
-  const playersData = j.attendees.map(pid => ({ pid, p: playerById(pid), ...(ps[pid] || { wins: 0, games: 0 }) }));
-  const rankWins = [...playersData].sort((a, b) => b.wins - a.wins || b.games - a.games);
-  const maxWins = Math.max(...rankWins.map(x => x.wins), 1);
-  const mvp = rankWins[0];
+  const deltas = getSessionEloDeltas(id);
+  const mvp = deltas.length > 0 ? deltas[0] : null;
   const bestPairs = Object.values(pairs).sort((a, b) => b.wins - a.wins || b.games - a.games).slice(0, 2);
 
-  const htmlRanking = rankWins.map(r => `
+  const htmlRanking = deltas.map(r => {
+    const isPos = r.delta > 0;
+    const isNeg = r.delta < 0;
+    const sign = isPos ? '+' : '';
+    const color = isPos ? 'var(--green)' : (isNeg ? 'var(--red)' : 'var(--text-muted)');
+    return `
     <div class="stat-row" style="padding:10px 0;border-bottom:1px dashed var(--border)">
-      <div class="stat-avatar" style="background:${r.p?.color || '#888'};width:32px;height:32px;font-size:0.75rem">${initials(r.p?.name)}</div>
+      <div class="stat-avatar" style="background:${r.color || '#888'};width:32px;height:32px;font-size:0.75rem">${initials(r.name)}</div>
       <div style="flex:1;min-width:0;margin-left:12px">
         <div style="display:flex;justify-content:space-between;margin-bottom:6px">
-          <span class="stat-name" style="font-size:0.9rem">${escHtml(r.p?.name || '?')}</span>
-          <span style="font-weight:900;color:var(--accent-bright);font-size:0.9rem">${r.wins} v</span>
-        </div>
-        <div class="stat-bar-wrap" style="height:6px;max-width:100%">
-          <div class="stat-bar" style="width:${Math.round((r.wins / maxWins) * 100)}%;background:linear-gradient(90deg,var(--accent),var(--cyan))"></div>
+          <span class="stat-name" style="font-size:0.9rem">${escHtml(r.name || '?')}</span>
+          <div style="display:flex; flex-direction:column; align-items:flex-end;">
+            <span style="font-weight:900;color:${color};font-size:0.95rem">${sign}${Math.round(r.delta)} pts</span>
+            <span style="font-size:0.7rem;color:var(--text-muted)">${Math.round(r.eloAfter)} total</span>
+          </div>
         </div>
       </div>
-    </div>`).join('');
+    </div>`;
+  }).join('');
 
   const pairsHtml = bestPairs.length > 0
     ? `<p class="section-title" style="margin-top:20px;margin-bottom:10px">👥 Mejor Pareja</p>` +
@@ -1036,18 +1071,18 @@ function openJornadaDetails(id) {
     </div>
     <p style="font-size:0.82rem;color:var(--text-muted);margin-bottom:16px">${realMatches.length} partidos · ${j.attendees.length} jugadores</p>
 
-    ${mvp && mvp.wins > 0 ? `
-    <div style="background:linear-gradient(135deg,rgba(245,158,11,0.12),rgba(245,158,11,0.04));border:1px solid rgba(245,158,11,0.25);border-radius:var(--radius);padding:14px 16px;display:flex;align-items:center;gap:14px;margin-bottom:16px">
-      <div class="stat-avatar" style="background:${mvp.p?.color || '#888'};width:44px;height:44px;font-size:1rem;flex-shrink:0">${initials(mvp.p?.name)}</div>
+    ${mvp && mvp.delta > 0 ? `
+    <div style="background:linear-gradient(135deg,rgba(59,130,246,0.12),rgba(59,130,246,0.04));border:1px solid rgba(59,130,246,0.25);border-radius:var(--radius);padding:14px 16px;display:flex;align-items:center;gap:14px;margin-bottom:16px">
+      <div class="stat-avatar" style="background:${mvp.color || '#888'};width:44px;height:44px;font-size:1rem;flex-shrink:0">${initials(mvp.name)}</div>
       <div>
-        <div style="font-size:0.7rem;font-weight:700;color:var(--amber);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:2px">👑 MVP de la jornada</div>
-        <div style="font-size:1rem;font-weight:900;color:var(--text-primary)">${escHtml(mvp.p?.name || '?')}</div>
-        <div style="font-size:0.78rem;color:var(--text-muted);margin-top:2px">${mvp.wins} victorias · ${mvp.games} games</div>
+        <div style="font-size:0.7rem;font-weight:700;color:var(--accent);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:2px">🌟 Batacazo de la Jornada</div>
+        <div style="font-size:1rem;font-weight:900;color:var(--text-primary)">${escHtml(mvp.name || '?')}</div>
+        <div style="font-size:0.78rem;color:var(--text-muted);margin-top:2px">Rating final: ${Math.round(mvp.eloAfter)} <span style="color:var(--green);font-weight:700">(+${Math.round(mvp.delta)})</span></div>
       </div>
     </div>` : ''}
 
     <div style="max-height:55dvh;overflow-y:auto;padding-right:4px">
-      <p class="section-title" style="margin-bottom:10px">📊 Ranking de la jornada</p>
+      <p class="section-title" style="margin-bottom:10px">📈 Evolución ELO en el día</p>
       <div class="card" style="padding:12px 16px;margin-bottom:4px">${htmlRanking}</div>
       ${pairsHtml}
       <button class="btn btn-ghost btn-full" onclick="openJornadaMatchList('${id}')" style="font-size:0.78rem;color:var(--text-muted);margin-top:16px">Ver partidos detallados →</button>
