@@ -442,7 +442,7 @@ function openAttendanceModal() {
   openModal(`
     <div class="modal-handle"></div>
     <p class="modal-title">👥 ¿Quién viene hoy?</p>
-    <p style="font-size:0.82rem;color:var(--text-muted);margin-bottom:16px">Selecciona entre 4 y 8 jugadores</p>
+    <p style="font-size:0.82rem;color:var(--text-muted);margin-bottom:16px">Selecciona al menos 4 jugadores</p>
     <div id="attendance-list" class="gap-8" style="margin-bottom:16px">
       ${state.players.map(p => `<div class="check-item" id="chk-${p.id}" onclick="toggleAttendee('${p.id}')"><div class="check-box" id="chkbox-${p.id}"></div><div class="player-avatar" style="background:${p.color}">${initials(p.name)}</div><span class="check-name">${escHtml(p.name)}</span></div>`).join('')}
     </div>
@@ -462,12 +462,11 @@ function updateAttendanceBtn() {
   const n = window._attendees?.size || 0; const msg = document.getElementById('attend-msg'); const btn = document.getElementById('btn-proceed-config');
   if (!msg || !btn) return;
   if (n < 4) { msg.style.color = 'var(--amber)'; msg.textContent = `Selecciona ${4 - n} más`; btn.disabled = true; btn.style.opacity = '0.5'; }
-  else if (n > 8) { msg.style.color = 'var(--red)'; msg.textContent = 'Máximo 8 jugadores'; btn.disabled = true; btn.style.opacity = '0.5'; }
   else { msg.style.color = 'var(--green)'; msg.textContent = `✓ ${n} jugadores seleccionados`; btn.disabled = false; btn.style.opacity = '1'; }
 }
 
 function proceedToConfig() {
-  const attendees = [...window._attendees]; if (attendees.length < 4 || attendees.length > 8) return;
+  const attendees = [...window._attendees]; if (attendees.length < 4) return;
   previewFixture(attendees);
 }
 
