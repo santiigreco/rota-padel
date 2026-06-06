@@ -28,7 +28,7 @@ let state = {
 - La app usa un enfoque declarativo simulado (re-renderizado manual).
 - La función principal `renderPage()` limpia el contenedor (`#page-container`) y delega a las vistas específicas según `state.currentTab` (`renderPlayPage`, `renderHistoryPage`, `renderPlayersPage`, `renderStatsPage`).
 - Al modificar datos (ej: `saveMatchResult()`), se actualiza el `state`, se guarda en `CACHE` y API (vía `withSync`), y se vuelve a llamar a `renderPage()`.
-- Para micro-interacciones (ej: sumar un punto con `changeScore`), se muta directamente el DOM (ej: `document.getElementById('score1').textContent = ...`) por rendimiento, sin re-renderizar toda la página.
+- Para micro-interacciones (ej: sumar un punto con `changeFixtureScore` usando botones +/-), se muta directamente el DOM (ej: `document.getElementById('fs-0-1').textContent = ...`) por rendimiento y velocidad táctil, sin re-renderizar toda la página.
 
 ## 🗄️ Comunicación con la API (Google Sheets)
 El objeto `API` contiene los métodos para llamar a Google Apps Script por GET con el parámetro `action`:
@@ -64,6 +64,7 @@ Se escala a base ~1000: `display = (μ/50)*1000 + 500`
 
 ### Funciones Clave
 - `computeGlobalStats()`: Recalcula TODO el ranking desde el historial del torneo activo. Recorre jornadas cronológicamente, aplica TrueSkill a cada partido 2v2, y devuelve rankings/parejas/asistencia.
+- `getSessionEloDeltas(id)`: Extrae del historial global cuánto ELO sumó o restó cada jugador en una jornada específica para coronar al MVP (Batacazo) del día.
 - `normalPdf()`, `normalCdf()`, `tsVFunction()`, `tsWFunction()`: Funciones matemáticas de la distribución normal necesarias para TrueSkill.
 - `getEloRankInfo(elo)`: Devuelve badge/color según el rating (Diamante ≥1150, Oro ≥1080, Plata ≥1020, Bronce ≥960, Hierro <960).
 
@@ -82,7 +83,10 @@ El sistema genera combinaciones posibles y penaliza según:
 - **Nivelación por ELO:** Se incorpora el *Método Nuco Flocco* calculando la diferencia de μ entre ambos equipos (`|μ_A + μ_B - (μ_C + μ_D)| * 5`). Esto hace que, a igualdad de rotación, la app **siempre elija el cruce más parejo**.
 
 ### 3. Resultados Libres y Descartes
-No hay límite de games. Los usuarios ingresan el resultado de cada partido (ej. 6-3, 10-8). Al finalizar la jornada, el sistema **descarta y borra automáticamente los partidos que quedaron 0-0** o no se jugaron, evitando ensuciar el historial.
+No hay límite de games. Los usuarios ingresan el resultado de cada partido mediante botones táctiles rápidos (`-` / `+`). Al finalizar la jornada, el sistema **descarta y borra automáticamente los partidos que quedaron 0-0** o no se jugaron.
+
+### 4. Fin de Jornada y Compartir
+Al terminar la jornada, se muestra el MVP ("Batacazo del día") calculado por Evolución ELO (quién sumó más puntos), junto con una tabla de la evolución diaria. Incluye un botón para compartir el podio preformateado en WhatsApp (`shareSessionWhatsApp`).
 
 ## ⚙️ Reglas Importantes de Desarrollo
 1. **Diseño Premium**: El CSS está muy pulido con glassmorphism, gradientes, bordes sutiles y modo oscuro. Al agregar componentes, respeta las variables CSS existentes (ej: `var(--accent)`, `var(--bg-card)`) y las clases como `.card`, `.btn`, `.btn-primary`.
