@@ -1344,16 +1344,19 @@ Para un partido Equipo A vs Equipo B:
       c.innerHTML = '<div class="empty-state"><div class="empty-icon">📈</div><div class="empty-title">No hay historial suficiente</div></div>'; return;
     }
 
-    // Calcular max y min SOLO de los jugadores visibles
-    let maxElo = 1000, minElo = 1000, maxIdx = 1;
+    // Construir línea de tiempo global del torneo activo
+    const tHistory = state.history.filter(j => (state.activeTorneo ? j.id_torneo === state.activeTorneo : j.id_torneo === 'torneo_inicial')).sort((a, b) => new Date(a.date) - new Date(b.date));
+    const timeline = ['Inicio', ...tHistory.map(j => j.date)];
+    const maxIdx = Math.max(1, timeline.length - 1);
+
+    let maxElo = 1000, minElo = 1000;
     let hasVisible = false;
     topPlayers.forEach(p => {
       if (state.chartHidden[p.id]) return;
       hasVisible = true;
-      p.eloHistory.forEach((h, idx) => {
+      p.eloHistory.forEach(h => {
         if (h.elo > maxElo) maxElo = h.elo;
         if (h.elo < minElo) minElo = h.elo;
-        if (idx > maxIdx) maxIdx = idx;
       });
     });
 
@@ -1363,16 +1366,21 @@ Para un partido Equipo A vs Equipo B:
 
     const w = 300, h = 180;
 
-    const lines = topPlayers.map((p, i) => {
+    const lines = topPlayers.map(p => {
       if (state.chartHidden[p.id] || p.eloHistory.length <= 1) return '';
-      const points = p.eloHistory.map((hist, idx) => {
+      
+      const points = p.eloHistory.map(hist => {
+        let idx = timeline.indexOf(hist.date);
+        if (idx === -1) idx = 0;
         const x = (idx / maxIdx) * w;
         const y = h - (((hist.elo - minElo) / range) * h);
         return `${x},${y}`;
       }).join(' ');
 
       const lastHist = p.eloHistory[p.eloHistory.length - 1];
-      const lastX = ((p.eloHistory.length - 1) / maxIdx) * w;
+      let lastIdx = timeline.indexOf(lastHist.date);
+      if (lastIdx === -1) lastIdx = 0;
+      const lastX = (lastIdx / maxIdx) * w;
       const lastY = h - (((lastHist.elo - minElo) / range) * h);
 
       return `
@@ -1399,27 +1407,31 @@ Para un partido Equipo A vs Equipo B:
           <button style="${btnStyle('top3')}" onclick="setChartFilter('top3')">Top 3</button>
         </div>
       </div>
-      <div class="card" style="padding: 16px; overflow-x: auto; margin-top:8px;">
-        <svg viewBox="0 -10 ${w} ${h + 20}" style="width:100%; height:auto; overflow:visible;">
+      <div class="card" style="padding: 16px 16px 16px 8px; overflow-x: auto; margin-top:8px;">
+        <svg viewBox="-30 -10 ${w + 40} ${h + 35}" style="width:100%; height:auto; overflow:visible;">
           <!-- Grid Lines -->
           <line x1="0" y1="0" x2="${w}" y2="0" stroke="var(--border)" stroke-dasharray="4" />
           <line x1="0" y1="${h / 2}" x2="${w}" y2="${h / 2}" stroke="var(--border)" stroke-dasharray="4" />
           <line x1="0" y1="${h}" x2="${w}" y2="${h}" stroke="var(--border)" stroke-dasharray="4" />
           
           <!-- Y-Axis Labels -->
-          <text x="-5" y="4" font-size="10" fill="var(--text-muted)" text-anchor="end">${maxElo}</text>
-          <text x="-5" y="${h / 2 + 4}" font-size="10" fill="var(--text-muted)" text-anchor="end">${Math.round((maxElo + minElo) / 2)}</text>
-          <text x="-5" y="${h + 4}" font-size="10" fill="var(--text-muted)" text-anchor="end">${minElo}</text>
+          <text x="-8" y="4" font-size="10" fill="var(--text-muted)" text-anchor="end" font-weight="600">${maxElo}</text>
+          <text x="-8" y="${h / 2 + 4}" font-size="10" fill="var(--text-muted)" text-anchor="end" font-weight="600">${Math.round((maxElo + minElo) / 2)}</text>
+          <text x="-8" y="${h + 4}" font-size="10" fill="var(--text-muted)" text-anchor="end" font-weight="600">${minElo}</text>
           
           <!-- X-Axis Labels (Dates) -->
-          ${topPlayers.length > 0 && topPlayers[0].eloHistory ? topPlayers[0].eloHistory.map((hist, idx) => {
-      if (idx === 0 || idx === maxIdx || maxIdx < 4 || (idx % Math.floor(maxIdx / 3) === 0)) {
-        const x = (idx / maxIdx) * w;
-        let dLabel = hist.date === 'Inicio' ? 'Inicio' : ('J' + idx);
-        return `<text x="${x}" y="${h + 16}" font-size="8" fill="var(--text-muted)" text-anchor="middle">${dLabel}</text>`;
-      }
-      return '';
-    }).join('') : ''}
+          ${timeline.map((dateStr, idx) => {
+            if (idx === 0 || idx === maxIdx || maxIdx < 4 || (idx % Math.floor(maxIdx / 3) === 0)) {
+              const x = (idx / maxIdx) * w;
+              let dLabel = 'Inicio';
+              if (dateStr !== 'Inicio') {
+                const d = new Date(dateStr);
+                dLabel = \`\${d.getDate()}/\${d.getMonth() + 1}\`;
+              }
+              return \`<text x="\${x}" y="\${h + 18}" font-size="9" fill="var(--text-muted)" text-anchor="middle" font-weight="600">\${dLabel}</text>\`;
+            }
+            return '';
+          }).join('')}
           
           ${lines}
         </svg>
