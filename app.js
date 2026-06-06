@@ -1611,9 +1611,9 @@ function computeGlobalStats() {
   };
 
   return {
-    ranking: ids.map(row).sort((a, b) => b.elo - a.elo),
-    gamesRanking: ids.map(row).sort((a, b) => b.games - a.games),
-    attendance: ids.map(row).sort((a, b) => { const pctA = a.possible > 0 ? a.sessions / a.possible : 0; const pctB = b.possible > 0 ? b.sessions / b.possible : 0; return pctB - pctA || b.sessions - a.sessions; }),
+    ranking: ids.map(row).filter(r => r.sessions > 0).sort((a, b) => b.elo - a.elo),
+    gamesRanking: ids.map(row).filter(r => r.sessions > 0).sort((a, b) => b.games - a.games),
+    attendance: ids.map(row).filter(r => r.sessions > 0).sort((a, b) => { const pctA = a.possible > 0 ? a.sessions / a.possible : 0; const pctB = b.possible > 0 ? b.sessions / b.possible : 0; return pctB - pctA || b.sessions - a.sessions; }),
     pairs: Object.values(pairs).sort((a, b) => { const rA = a.total > 0 ? a.wins / a.total : 0; const rB = b.total > 0 ? b.wins / b.total : 0; return rB - rA || b.total - a.total; }),
   };
 }
