@@ -62,14 +62,50 @@ rating_display = tsScaleToDisplay(μ_adjusted)
 Donde `k` = jornadas asistidas, `N` = total jornadas del torneo.
 Se escala a base ~1000: `display = (μ/50)*1000 + 500`
 
+### Funcionamiento correcto del cálculo (cambios 14-jun-2026)
+
+#### 1. σ aislado por jugador (`sigmaFromMatches`)
+Para evitar el efecto cascada (editar el partido de A afecta el ELO de B), **σ ya no se acumula** a través del algoritmo bayesiano cross-player. En cambio, se calcula directamente desde los partidos propios del jugador:
+```
+σ(n) = √(σ0² / (n+1) + τ²)
+```
+Así, el σ de cada jugador depende **únicamente de cuántos partidos él mismo ha jugado**, no de la historia de otros.
+
+#### 2. Cálculo jornada a jornada (snapshot)
+`computeGlobalStats()` **no actualiza μ partido a partido** dentro de una jornada. En cambio:
+1. Al inicio de cada jornada se toma un **snapshot** de `μ` y `n_partidos` de todos los jugadores.
+2. Todos los partidos de esa jornada calculan su delta `Δμ` usando ese snapshot (mismos valores de arranque para todos).
+3. Los `Δμ` se **acumulan** durante la jornada y se aplican **todos juntos** al final.
+
+Esto garantiza que: el orden de los partidos dentro de una jornada no afecta el resultado, y editar un partido solo afecta a los jugadores de ese partido.
+
 ### Funciones Clave
-- `computeGlobalStats()`: Recalcula TODO el ranking desde el historial del torneo activo. Recorre jornadas cronológicamente, aplica TrueSkill a cada partido 2v2, y devuelve rankings/parejas/asistencia.
+- `computeGlobalStats()`: Recalcula TODO el ranking desde el historial del torneo activo. Recorre jornadas cronológicamente con snapshot por jornada, aplica TrueSkill a cada partido 2v2, y devuelve rankings/parejas/asistencia.
+- `sigmaFromMatches(n)`: Calcula el σ de un jugador desde su propio conteo de partidos. Evita cascada cross-player.
 - `getSessionEloDeltas(id)`: Extrae del historial global cuánto ELO sumó o restó cada jugador en una jornada específica para coronar al MVP (Batacazo) del día.
 - `normalPdf()`, `normalCdf()`, `tsVFunction()`, `tsWFunction()`: Funciones matemáticas de la distribución normal necesarias para TrueSkill.
 - `getEloRankInfo(elo)`: Devuelve badge/color según el rating (Diamante ≥1200, Oro ≥1000, Plata ≥900, Bronce ≥800, Hierro <800).
+- `openPlayerProfile(playerId)`: Abre un modal de transparencia completa del jugador (ver sección abajo).
 
 ### Tab "📐 Fórmula" en Estadísticas
 La pestaña Fórmula en la página de estadísticas muestra toda la matemática del método con atribución a Nuco Flocco. Cualquier cambio en los parámetros o fórmulas debe reflejarse también ahí.
+
+## 🔍 Perfil de Jugador — Transparencia
+
+La función `openPlayerProfile(playerId)` abre un modal que muestra:
+
+1. **Header**: Avatar con color, nombre, badge de ranking y puntos actuales.
+2. **Modelo TrueSkill**: Tarjetas con `μ` (habilidad estimada), `σ` (certeza) y % asistencia.
+3. **Banner de penalización** (solo si hay): indica cuántos pts se perdieron por faltas.
+4. **Timeline jornada a jornada**: Por cada jornada del torneo activo:
+   - Fecha, presencia o ausencia
+   - Partidos jugados y victorias
+   - `Δ pts` de esa jornada y total acumulado
+   - Desglose de cada partido: resultado W/L, compáñero, rivales, marcador
+
+**Puntos de entrada al perfil:**
+- Click en cualquier fila del Ranking (tab Estadísticas → 🏆 Ranking)
+- Botón 📊 en la lista de Jugadores
 
 ## 🚀 Flujo Rápido y Generación de Fixture
 
@@ -94,4 +130,4 @@ Al terminar la jornada, se muestra el MVP ("Batacazo del día") calculado por Ev
 3. **Vanilla Pura**: No agregues librerías externas ni utilices JSX. Los componentes se renderizan mediante Template Literals (`` `...` ``).
 
 ---
-*Última actualización: Junio 2026*
+*Última actualización: 14 de junio 2026 — Fix ELO cascade + cálculo por jornada + panel de transparencia*
