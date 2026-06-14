@@ -924,7 +924,7 @@ function renderPlayersPage(page) {
 
 function renderPlayerItem(p) {
   const s = getPlayerStatsQuick(p.id);
-  return `<div class="player-item"><div class="player-avatar" style="background:${p.color}">${initials(p.name)}</div><div style="flex:1;min-width:0"><div class="player-name">${escHtml(p.name)}</div><div style="font-size:0.75rem;color:var(--text-muted);margin-top:2px">${s.matches} partidos · ${s.wins} victorias · ${s.sessions} jornadas</div></div><div class="player-actions"><button class="btn btn-icon btn-ghost btn-sm" onclick="openEditPlayerModal('${p.id}')">✏️</button><button class="btn btn-icon btn-ghost btn-sm" onclick="confirmDeletePlayer('${p.id}')">🗑</button></div></div>`;
+  return `<div class="player-item"><div class="player-avatar" style="background:${p.color}">${initials(p.name)}</div><div style="flex:1;min-width:0"><div class="player-name">${escHtml(p.name)}</div><div style="font-size:0.75rem;color:var(--text-muted);margin-top:2px">${s.matches} partidos · ${s.wins} victorias · ${s.sessions} jornadas</div></div><div class="player-actions"><button class="btn btn-icon btn-ghost btn-sm" onclick="openPlayerProfile('${p.id}')" title="Ver perfil">📊</button><button class="btn btn-icon btn-ghost btn-sm" onclick="openEditPlayerModal('${p.id}')">✏️</button><button class="btn btn-icon btn-ghost btn-sm" onclick="confirmDeletePlayer('${p.id}')">🗑</button></div></div>`;
 }
 
 function getPlayerStatsQuick(id) {
@@ -1310,7 +1310,7 @@ function renderStatTab(c, tab, stats) {
       <div class="card">${stats.ranking.map((r, i) => {
       const rankInfo = getEloRankInfo(r.elo);
       const penaltyHtml = r.penalty < -1 ? `<span style="font-size:0.65rem; color:var(--red); margin-left:4px;">📉 ${r.penalty} por faltas</span>` : '';
-      return `<div class="stat-row"><div class="stat-pos ${i === 0 ? 'gold' : i === 1 ? 'silver' : i === 2 ? 'bronze' : ''}">${i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : i + 1}</div><div class="stat-avatar" style="background:${r.color}">${initials(r.name)}</div><div style="flex:1;min-width:0"><div class="stat-name">${escHtml(r.name)}</div><div style="font-size:0.75rem; color:${rankInfo.color}; margin-top:4px; font-weight:700;">${rankInfo.badge} - ${Math.round(r.elo)} Pts${penaltyHtml}</div></div><div style="text-align:right"><div class="stat-val" style="font-size:1.1rem">${r.wins} v</div><div class="stat-unit" style="font-size:0.75rem">en ${r.matches} pj</div></div></div>`;
+      return `<div class="stat-row" onclick="openPlayerProfile('${r.id}')" style="cursor:pointer; transition:background 0.15s;" onmouseenter="this.style.background='var(--bg-input)'" onmouseleave="this.style.background=''"><div class="stat-pos ${i === 0 ? 'gold' : i === 1 ? 'silver' : i === 2 ? 'bronze' : ''}">${i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : i + 1}</div><div class="stat-avatar" style="background:${r.color}">${initials(r.name)}</div><div style="flex:1;min-width:0"><div class="stat-name">${escHtml(r.name)}</div><div style="font-size:0.75rem; color:${rankInfo.color}; margin-top:4px; font-weight:700;">${rankInfo.badge} - ${Math.round(r.elo)} Pts${penaltyHtml}</div></div><div style="text-align:right"><div class="stat-val" style="font-size:1.1rem">${r.wins} v</div><div class="stat-unit" style="font-size:0.75rem">en ${r.matches} pj</div></div><div style="margin-left:8px; color:var(--text-muted); font-size:0.75rem;">›</div></div>`;
     }).join('')}</div>`;
   } else if (tab === 'games') {
     const max = stats.gamesRanking[0]?.games || 1;
@@ -1788,6 +1788,132 @@ function getEloRankInfo(elo) {
   if (elo >= 900) return { badge: 'Plata 🥈', color: 'var(--text-primary)', bg: 'rgba(148, 163, 184, 0.1)' };
   if (elo >= 800) return { badge: 'Bronce 🥉', color: 'var(--orange)', bg: 'rgba(249, 115, 22, 0.1)' };
   return { badge: 'Hierro ⛓️', color: 'var(--text-muted)', bg: 'var(--bg-input)' };
+}
+
+// ═══ PLAYER PROFILE (TRANSPARENCY) ════════════════════════════════════
+function openPlayerProfile(playerId) {
+  const stats = computeGlobalStats();
+  const pRank = stats.ranking.find(r => r.id === playerId);
+  const player = playerById(playerId);
+  if (!player && !pRank) return;
+
+  const name  = player?.name  || pRank?.name  || '?';
+  const color = player?.color || pRank?.color || '#888';
+  const elo   = pRank?.elo   ?? 1000;
+  const mu    = pRank?.mu    ?? 25;
+  const sigma = pRank?.sigma ?? 8.33;
+  const attendanceRatio = pRank?.attendanceRatio ?? 0;
+  const penalty         = pRank?.penalty ?? 0;
+  const rankInfo = getEloRankInfo(elo);
+  const eloHistory = pRank?.eloHistory || [{ date: 'Inicio', elo: 1000 }];
+
+  const tHistory = getActiveHistory().sort((a, b) => new Date(a.date) - new Date(b.date));
+
+  // ── Construir filas por jornada ─────────────────────────────────────────
+  const jornadasHtml = tHistory.map((j, jIdx) => {
+    const histIdx  = jIdx + 1;
+    const eloBefore = eloHistory[histIdx - 1]?.elo ?? 1000;
+    const eloAfter  = eloHistory[histIdx]?.elo  ?? eloBefore;
+    const delta = eloAfter - eloBefore;
+
+    const isPresent = j.attendees.includes(playerId);
+    const date = new Date(j.date).toLocaleDateString('es-ES', { weekday: 'short', day: 'numeric', month: 'short' });
+    const dateStr = date.charAt(0).toUpperCase() + date.slice(1);
+
+    let nPlayed = 0, nWins = 0, matchRows = '';
+
+    if (isPresent) {
+      const playerMatches = j.matches.filter(m =>
+        !m.skipped && (m.team1.includes(playerId) || m.team2.includes(playerId))
+      );
+      nPlayed = playerMatches.length;
+
+      matchRows = playerMatches.map(m => {
+        const isT1    = m.team1.includes(playerId);
+        const myTeam  = isT1 ? m.team1 : m.team2;
+        const oppTeam = isT1 ? m.team2 : m.team1;
+        const myScore  = isT1 ? m.score1 : m.score2;
+        const oppScore = isT1 ? m.score2 : m.score1;
+        const won = myScore > oppScore;
+        if (won) nWins++;
+        const partner = myTeam.find(id => id !== playerId);
+        const pName = escHtml(playerById(partner)?.name || '?');
+        const o1 = escHtml(playerById(oppTeam[0])?.name || '?');
+        const o2 = escHtml(playerById(oppTeam[1])?.name || '?');
+        const wColor = won ? 'var(--green)' : 'var(--red)';
+        const wLabel = won ? 'W' : 'L';
+        return `<div style="display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid var(--border);font-size:0.76rem;">
+          <span style="width:18px;font-weight:900;color:${wColor};flex-shrink:0;">${wLabel}</span>
+          <span style="flex:1;color:var(--text-secondary);">con <strong style="color:var(--text-primary);">${pName}</strong> vs ${o1} &amp; ${o2}</span>
+          <span style="font-weight:800;color:${wColor};flex-shrink:0;">${myScore}-${oppScore}</span>
+        </div>`;
+      }).join('');
+    }
+
+    const dColor = delta > 0 ? 'var(--green)' : delta < 0 ? 'var(--red)' : 'var(--text-muted)';
+    const dSign  = delta > 0 ? '+' : '';
+    const absentBg = !isPresent ? 'opacity:0.55;' : '';
+
+    return `<div style="border:1px solid var(--border);border-radius:var(--radius-sm);margin-bottom:8px;overflow:hidden;${absentBg}">
+      <div style="display:flex;justify-content:space-between;align-items:center;padding:10px 12px;background:var(--bg-input);">
+        <div>
+          <div style="font-size:0.8rem;font-weight:700;color:var(--text-primary);">${dateStr}</div>
+          ${ isPresent
+            ? `<div style="font-size:0.72rem;color:var(--text-muted);margin-top:1px;">${nPlayed} partidos · ${nWins} victorias</div>`
+            : `<div style="font-size:0.72rem;color:var(--text-muted);font-style:italic;margin-top:1px;">Ausente</div>` }
+        </div>
+        <div style="text-align:right;">
+          <div style="font-size:0.9rem;font-weight:900;color:${dColor};">${dSign}${Math.round(delta)} pts</div>
+          <div style="font-size:0.7rem;color:var(--text-muted);margin-top:1px;">${Math.round(eloAfter)} total</div>
+        </div>
+      </div>
+      ${matchRows ? `<div style="padding:4px 12px 8px;">${matchRows}</div>` : ''}
+    </div>`;
+  }).join('');
+
+  // ── Penalty banner ─────────────────────────────────────────────────────
+  const penaltyBanner = penalty < -1 ? `
+    <div style="background:rgba(239,68,68,0.08);border:1px solid rgba(239,68,68,0.25);border-radius:var(--radius-sm);padding:10px 14px;margin-bottom:16px;">
+      <div style="font-size:0.78rem;color:var(--red);font-weight:700;">⚠️ Penalización por inasistencia: ${Math.round(penalty)} pts</div>
+      <div style="font-size:0.7rem;color:var(--text-muted);margin-top:2px;">Asistió al ${Math.round(attendanceRatio * 100)}% de las jornadas del torneo</div>
+    </div>` : '';
+
+  openModal(`
+    <div class="modal-handle"></div>
+
+    <!-- Header del jugador -->
+    <div style="display:flex;align-items:center;gap:14px;margin-bottom:20px;">
+      <div class="stat-avatar" style="background:${color};width:52px;height:52px;font-size:1.1rem;flex-shrink:0;">${initials(name)}</div>
+      <div>
+        <div style="font-size:1.1rem;font-weight:900;color:var(--text-primary);">${escHtml(name)}</div>
+        <div style="font-size:0.8rem;color:${rankInfo.color};font-weight:700;margin-top:3px;">${rankInfo.badge} &mdash; ${Math.round(elo)} pts</div>
+      </div>
+    </div>
+
+    <!-- Modelo del jugador -->
+    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:16px;">
+      <div style="background:var(--bg-input);padding:10px 6px;border-radius:var(--radius-sm);text-align:center;">
+        <div style="font-size:0.62rem;color:var(--text-muted);margin-bottom:4px;text-transform:uppercase;letter-spacing:0.5px;">μ habilidad</div>
+        <div style="font-size:1rem;font-weight:900;color:var(--accent);">${mu.toFixed(2)}</div>
+      </div>
+      <div style="background:var(--bg-input);padding:10px 6px;border-radius:var(--radius-sm);text-align:center;">
+        <div style="font-size:0.62rem;color:var(--text-muted);margin-bottom:4px;text-transform:uppercase;letter-spacing:0.5px;">σ certeza</div>
+        <div style="font-size:1rem;font-weight:900;color:var(--cyan);">${sigma.toFixed(2)}</div>
+      </div>
+      <div style="background:var(--bg-input);padding:10px 6px;border-radius:var(--radius-sm);text-align:center;">
+        <div style="font-size:0.62rem;color:var(--text-muted);margin-bottom:4px;text-transform:uppercase;letter-spacing:0.5px;">Asistencia</div>
+        <div style="font-size:1rem;font-weight:900;color:var(--amber);">${Math.round(attendanceRatio * 100)}%</div>
+      </div>
+    </div>
+
+    ${penaltyBanner}
+
+    <!-- Timeline de jornadas -->
+    <p style="font-size:0.82rem;font-weight:800;color:var(--text-primary);margin-bottom:10px;">📅 Evolución jornada a jornada</p>
+    <div style="max-height:50dvh;overflow-y:auto;padding-right:4px;">
+      ${ jornadasHtml || '<div style="color:var(--text-muted);font-size:0.85rem;text-align:center;padding:20px;">Sin jornadas registradas en este torneo</div>' }
+    </div>
+  `);
 }
 
 // ═══ ROTATION ALGORITHM ════════════════════════════════════════════════
