@@ -463,12 +463,17 @@ function updateAttendanceBtn() {
   const n = window._attendees?.size || 0; const msg = document.getElementById('attend-msg'); const btn = document.getElementById('btn-proceed-config');
   if (!msg || !btn) return;
   if (n < 4) { msg.style.color = 'var(--amber)'; msg.textContent = `Selecciona ${4 - n} más`; btn.disabled = true; btn.style.opacity = '0.5'; }
+  else if (n >= 8) { msg.style.color = 'var(--green)'; msg.textContent = `✓ ${n} jugadores — 🎾🎾 Modo 2 Canchas`; btn.disabled = false; btn.style.opacity = '1'; }
   else { msg.style.color = 'var(--green)'; msg.textContent = `✓ ${n} jugadores seleccionados`; btn.disabled = false; btn.style.opacity = '1'; }
 }
 
 function proceedToConfig() {
   const attendees = [...window._attendees]; if (attendees.length < 4) return;
-  previewFixture(attendees);
+  if (attendees.length >= 8) {
+    previewFixtureDoubleCourt(attendees);
+  } else {
+    previewFixture(attendees);
+  }
 }
 
 function previewFixture(attendees) {
@@ -490,8 +495,199 @@ function previewFixture(attendees) {
 
   window._tempFixture = fixture;
   window._tempAtt = sh;
+  window._tempCourts = 1;
 
   renderFixturePreview();
+}
+
+// ─── MODO 2 CANCHAS ────────────────────────────────────────────────────────
+
+function previewFixtureDoubleCourt(attendees) {
+  // 4 rondas iniciales = 8 partidos (2 por cancha)
+  const INITIAL_ROUNDS = 4;
+  const sh = [...attendees].sort(() => Math.random() - 0.5);
+  const stats = computeGlobalStats();
+  const rankings = stats.ranking.reduce((acc, r) => { acc[r.id] = r; return acc; }, {});
+
+  let fixture = [];
+  for (let r = 0; r < INITIAL_ROUNDS; r++) {
+    const round = generateRoundDoubleCourt(sh, fixture, rankings, r);
+    round.court1.matchIndex = fixture.length + 1;
+    round.court1.score1 = 0; round.court1.score2 = 0; round.court1.skipped = false;
+    round.court2.matchIndex = fixture.length + 2;
+    round.court2.score1 = 0; round.court2.score2 = 0; round.court2.skipped = false;
+    fixture.push(round.court1, round.court2);
+  }
+
+  window._tempFixture = fixture;
+  window._tempAtt = sh;
+  window._tempCourts = 2;
+
+  renderFixturePreviewDoubleCourt();
+}
+
+/**
+ * Genera 1 ronda de 2 canchas (2 partidos simultáneos) para 8+ jugadores.
+ * Optimiza:
+ *   - Equidad de juego (1000 pts por asimetría grave)
+ *   - Rotación de compañero dentro de cancha (50 pts por repetir)
+ *   - Repetición del mismo grupo de 4 en una cancha (30 pts)
+ *   - Desbalance ELO entre canchas (|muC1 - muC2| * 3)
+ *   - Desbalance ELO dentro de cada cancha (|muT1 - muT2| * 5)
+ */
+function generateRoundDoubleCourt(attendees, played, rankings, roundIdx) {
+  // Contadores de historial
+  const pc = {}, partC = {}, sameGroupC = {};
+  for (const id of attendees) pc[id] = 0;
+  for (const m of played) {
+    if (!m.skipped) {
+      for (const id of [...m.team1, ...m.team2]) pc[id] = (pc[id] || 0) + 1;
+    }
+    for (const t of [m.team1, m.team2]) {
+      const k = [...t].sort().join('_');
+      partC[k] = (partC[k] || 0) + 1;
+    }
+    // Registrar grupo de 4 que compartió cancha
+    const courtKey = [...new Set([...m.team1, ...m.team2])].sort().join('_');
+    sameGroupC[courtKey] = (sameGroupC[courtKey] || 0) + 1;
+  }
+
+  // Si quedan jugadores sin jugar por encima de 8, los extras descansan (los que más jugaron)
+  let active = [...attendees];
+  if (active.length > 8) {
+    // Ordenar por partidos jugados ascendente; los que más jugaron descansan
+    active = [...active].sort((a, b) => (pc[a] || 0) - (pc[b] || 0)).slice(0, 8);
+  }
+
+  // Evaluar todas las divisiones posibles en 2 grupos de 4
+  // C(8,4)/2 = 35 divisiones únicas
+  const half = active.length / 2; // 4
+  const groupCombinations = combinations(active, half);
+  const seenDivisions = new Set();
+
+  let bestScore = Infinity, bestC1 = null, bestC2 = null;
+
+  for (const groupA of groupCombinations) {
+    const groupB = active.filter(id => !groupA.includes(id));
+    // Evitar evaluar el mismo par (A,B) y (B,A)
+    const divKey = [...groupA].sort().join('_');
+    if (seenDivisions.has(divKey)) continue;
+    seenDivisions.add(divKey);
+
+    // Repetición del mismo grupo de 4 en una cancha
+    const gAkey = [...groupA].sort().join('_');
+    const gBkey = [...groupB].sort().join('_');
+    const groupRepeatScore = ((sameGroupC[gAkey] || 0) + (sameGroupC[gBkey] || 0)) * 30;
+
+    // Balance ELO entre canchas
+    const muA = groupA.reduce((s, id) => s + (rankings[id]?.mu || 25), 0);
+    const muB = groupB.reduce((s, id) => s + (rankings[id]?.mu || 25), 0);
+    const courtBalanceScore = Math.abs(muA - muB) * 3;
+
+    // Equidad de juego
+    const gpcA = groupA.map(id => pc[id] || 0);
+    const gpcB = groupB.map(id => pc[id] || 0);
+    const allPlaying = [...gpcA, ...gpcB];
+    const minPlay = Math.min(...allPlaying), maxPlay = Math.max(...allPlaying);
+    const equityScore = maxPlay > minPlay + 1 ? 1000 * (maxPlay - minPlay) : 0;
+
+    // Evaluar todos los splits internos de cada grupo de 4
+    for (const [t1A, t2A] of getTeamSplits(groupA)) {
+      const partRepA = (partC[[...t1A].sort().join('_')] || 0) * 50 + (partC[[...t2A].sort().join('_')] || 0) * 50;
+      const muT1A = t1A.reduce((s, id) => s + (rankings[id]?.mu || 25), 0);
+      const muT2A = t2A.reduce((s, id) => s + (rankings[id]?.mu || 25), 0);
+      const eloBalA = Math.abs(muT1A - muT2A) * 5;
+
+      for (const [t1B, t2B] of getTeamSplits(groupB)) {
+        const partRepB = (partC[[...t1B].sort().join('_')] || 0) * 50 + (partC[[...t2B].sort().join('_')] || 0) * 50;
+        const muT1B = t1B.reduce((s, id) => s + (rankings[id]?.mu || 25), 0);
+        const muT2B = t2B.reduce((s, id) => s + (rankings[id]?.mu || 25), 0);
+        const eloBalB = Math.abs(muT1B - muT2B) * 5;
+
+        const totalScore = equityScore + groupRepeatScore + courtBalanceScore + partRepA + eloBalA + partRepB + eloBalB;
+
+        if (totalScore < bestScore) {
+          bestScore = totalScore;
+          bestC1 = { id: uid(), team1: t1A, team2: t2A, court: 1 };
+          bestC2 = { id: uid(), team1: t1B, team2: t2B, court: 2 };
+        }
+      }
+    }
+  }
+
+  return { court1: bestC1, court2: bestC2 };
+}
+
+function renderFixturePreviewDoubleCourt() {
+  const fixture = window._tempFixture; // pares de partidos
+  const rounds = [];
+  for (let i = 0; i < fixture.length; i += 2) {
+    rounds.push({ c1: fixture[i], c2: fixture[i + 1], roundNum: Math.floor(i / 2) + 1 });
+  }
+
+  const list = rounds.map(({ c1, c2, roundNum }) => {
+    const renderCourtCard = (m, courtLabel, mIdx) => {
+      const t1p1 = playerById(m.team1[0])?.name || '?', t1p2 = playerById(m.team1[1])?.name || '?';
+      const t2p1 = playerById(m.team2[0])?.name || '?', t2p2 = playerById(m.team2[1])?.name || '?';
+      return `
+        <div style="flex:1; background:var(--bg-input); border-radius:var(--radius-sm); padding:10px;">
+          <div style="font-size:0.7rem; color:var(--accent); font-weight:800; margin-bottom:8px; letter-spacing:0.3px;">${courtLabel}</div>
+          <div style="display:flex; align-items:center; gap:6px; font-size:0.8rem; font-weight:600;">
+            <div style="flex:1; text-align:right; line-height:1.4;">${escHtml(t1p1)}<br>${escHtml(t1p2)}</div>
+            <div style="color:var(--text-muted); font-size:0.7rem;">vs</div>
+            <div style="flex:1; text-align:left; line-height:1.4;">${escHtml(t2p1)}<br>${escHtml(t2p2)}</div>
+          </div>
+          <div style="display:flex; justify-content:center; margin-top:8px;">
+            <button class="btn btn-ghost btn-sm" onclick="shuffleMatchDC(${mIdx})" style="font-size:0.65rem; padding:3px 8px;">🔄 Cambiar</button>
+          </div>
+        </div>`;
+    };
+
+    const idxC1 = fixture.indexOf(c1);
+    const idxC2 = fixture.indexOf(c2);
+
+    return `
+      <div class="card" style="padding:12px; margin-bottom:10px;">
+        <div style="font-size:0.75rem; color:var(--text-muted); font-weight:700; margin-bottom:10px; text-align:center; letter-spacing:0.5px;">RONDA ${roundNum}</div>
+        <div style="display:flex; gap:8px;">
+          ${renderCourtCard(c1, '🎾 Cancha 1', idxC1)}
+          ${renderCourtCard(c2, '🎾 Cancha 2', idxC2)}
+        </div>
+      </div>`;
+  }).join('');
+
+  openModal(`
+    <div class="modal-handle"></div>
+    <p class="modal-title">📋 Fixture — 2 Canchas</p>
+    <p style="font-size:0.78rem; color:var(--text-muted); margin-bottom:12px;">2 partidos simultáneos por ronda · ${rounds.length} rondas · ${fixture.length} partidos</p>
+    <div style="max-height: 55dvh; overflow-y:auto; margin-bottom:16px;">
+      ${list}
+    </div>
+    <div class="gap-8">
+      <button class="btn btn-green btn-full" onclick="launchSession()">🚀 Confirmar y Empezar</button>
+      <button class="btn btn-ghost btn-full" onclick="openAttendanceModal()">Volver a selección</button>
+    </div>
+  `);
+}
+
+function shuffleMatchDC(idx) {
+  // Rota el split de pareja dentro del mismo grupo de 4 de esa cancha
+  const fixture = window._tempFixture;
+  const m = fixture[idx];
+  const pool = [...m.team1, ...m.team2];
+  const splits = getTeamSplits(pool);
+
+  let currentIdx = 0;
+  for (let i = 0; i < splits.length; i++) {
+    const s1 = [...splits[i][0]].sort().join('_');
+    const mt1 = [...m.team1].sort().join('_');
+    if (s1 === mt1 || s1 === [...m.team2].sort().join('_')) { currentIdx = i; break; }
+  }
+
+  const nextIdx = (currentIdx + 1) % splits.length;
+  m.team1 = splits[nextIdx][0];
+  m.team2 = splits[nextIdx][1];
+  renderFixturePreviewDoubleCourt();
 }
 
 function renderFixturePreview() {
@@ -550,12 +746,14 @@ function shuffleMatch(idx) {
 function launchSession() {
   const fixture = window._tempFixture;
   const attendees = window._tempAtt;
+  const courts = window._tempCourts || 1;
 
   state.session = {
     id: uid(),
     date: new Date().toISOString(),
     attendees,
     gamesFormat: 0, // Ya no se usa
+    courts,         // 1 o 2 canchas
     matches: [],
     fixture: fixture,
     currentMatch: fixture[0],
@@ -565,12 +763,13 @@ function launchSession() {
   CACHE.set(CK.SESSION, state.session);
   closeModal();
   renderPage();
-  showToast('🎾 ¡Jornada iniciada!');
+  showToast(courts === 2 ? '🎾🎾 ¡Jornada de 2 canchas iniciada!' : '🎾 ¡Jornada iniciada!');
 }
 
 // ═══ ACTIVE SESSION ════════════════════════════════════════════════════
 function renderActiveSession(c) {
   const s = state.session;
+  if (s.courts === 2) { renderActiveSessionDoubleCourt(c); return; }
 
   let html = `<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
     <p class="section-title" style="margin:0">Tablero de Fixture</p>
@@ -634,6 +833,89 @@ function renderActiveSession(c) {
   c.innerHTML = html;
 }
 
+// ─── Vista activa para modo 2 canchas ──────────────────────────────────────
+function renderActiveSessionDoubleCourt(c) {
+  const s = state.session;
+  const fixture = s.fixture;
+  const totalRounds = Math.ceil(fixture.length / 2);
+
+  let html = `
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+      <p class="section-title" style="margin:0">🎾🎾 Tablero — 2 Canchas</p>
+      <span class="badge badge-amber">${totalRounds} Rondas</span>
+    </div>
+    <p style="font-size:0.82rem; color:var(--text-secondary); line-height:1.4; margin-bottom:16px;">Anotá el resultado cuando termina cada partido. Los de la misma cancha rotan de pareja en la siguiente ronda.</p>
+  `;
+
+  for (let r = 0; r < totalRounds; r++) {
+    const i1 = r * 2, i2 = r * 2 + 1;
+    const m1 = fixture[i1], m2 = fixture[i2];
+    if (!m1) continue;
+
+    const renderCourtScore = (m, idx) => {
+      if (!m) return '';
+      const t1p1 = playerById(m.team1[0])?.name || '?', t1p2 = playerById(m.team1[1])?.name || '?';
+      const t2p1 = playerById(m.team2[0])?.name || '?', t2p2 = playerById(m.team2[1])?.name || '?';
+      return `
+        <div style="opacity:${m.skipped ? '0.45' : '1'}; transition:opacity 0.2s;">
+          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px; padding-bottom:6px; border-bottom:1px solid var(--border);">
+            <div style="font-size:0.75rem; font-weight:800; color:var(--cyan);">C${m.court || (idx % 2 === 0 ? 1 : 2)}</div>
+            <label style="display:flex; align-items:center; gap:4px; cursor:pointer; font-size:0.7rem; color:var(--text-muted);">
+              <input type="checkbox" onchange="toggleFixtureSkip(${idx})" ${m.skipped ? 'checked' : ''}>
+              Saltar
+            </label>
+          </div>
+          <div style="display:flex; flex-direction:column; gap:10px;">
+            <div style="display:flex; justify-content:space-between; align-items:center; gap:8px;">
+              <div style="font-size:0.82rem; font-weight:700; line-height:1.3; flex:1; ${m.score1 > m.score2 && (m.score1 > 0 || m.score2 > 0) ? 'color:var(--green)' : ''}">${escHtml(t1p1)}<br>${escHtml(t1p2)}</div>
+              <div style="display:flex; align-items:center; background:var(--bg-input); border-radius:6px; overflow:hidden; border:1px solid var(--border); flex-shrink:0; ${m.skipped ? 'opacity:0.4; pointer-events:none;' : ''}">
+                <button class="btn-ghost" style="padding:6px 12px; font-size:1.2rem; font-weight:800; border-right:1px solid var(--border);" onclick="changeFixtureScore(${idx}, 1, -1)">-</button>
+                <div id="fs-${idx}-1" style="width:34px; text-align:center; font-size:1.1rem; font-weight:900;">${m.score1 || 0}</div>
+                <button class="btn-ghost" style="padding:6px 12px; font-size:1.2rem; font-weight:800; border-left:1px solid var(--border);" onclick="changeFixtureScore(${idx}, 1, 1)">+</button>
+              </div>
+            </div>
+            <div style="display:flex; justify-content:space-between; align-items:center; gap:8px;">
+              <div style="font-size:0.82rem; font-weight:700; line-height:1.3; flex:1; ${m.score2 > m.score1 && (m.score1 > 0 || m.score2 > 0) ? 'color:var(--green)' : ''}">${escHtml(t2p1)}<br>${escHtml(t2p2)}</div>
+              <div style="display:flex; align-items:center; background:var(--bg-input); border-radius:6px; overflow:hidden; border:1px solid var(--border); flex-shrink:0; ${m.skipped ? 'opacity:0.4; pointer-events:none;' : ''}">
+                <button class="btn-ghost" style="padding:6px 12px; font-size:1.2rem; font-weight:800; border-right:1px solid var(--border);" onclick="changeFixtureScore(${idx}, 2, -1)">-</button>
+                <div id="fs-${idx}-2" style="width:34px; text-align:center; font-size:1.1rem; font-weight:900;">${m.score2 || 0}</div>
+                <button class="btn-ghost" style="padding:6px 12px; font-size:1.2rem; font-weight:800; border-left:1px solid var(--border);" onclick="changeFixtureScore(${idx}, 2, 1)">+</button>
+              </div>
+            </div>
+          </div>
+          <div style="display:flex; justify-content:center; margin-top:8px;">
+            <button class="btn btn-ghost btn-sm" onclick="openUpcomingMatchEditor(${idx})" style="font-size:0.7rem; padding:3px 8px;">✏️ Editar</button>
+          </div>
+        </div>`;
+    };
+
+    // Check if round has any result entered
+    const roundPlayed = (m1 && (m1.score1 > 0 || m1.score2 > 0)) || (m2 && (m2.score1 > 0 || m2.score2 > 0));
+    const roundBorderColor = roundPlayed ? 'var(--green)' : 'var(--border)';
+
+    html += `
+      <div class="card" style="padding:14px; margin-bottom:12px; border-left:3px solid ${roundBorderColor}; transition: border-color 0.3s;">
+        <div style="font-size:0.72rem; font-weight:800; color:var(--text-muted); letter-spacing:1px; text-align:center; margin-bottom:12px;">— RONDA ${r + 1} —</div>
+        <div style="display:grid; grid-template-columns:1fr 1px 1fr; gap:12px; align-items:start;">
+          ${renderCourtScore(m1, i1)}
+          <div style="background:var(--border); height:100%;"></div>
+          ${m2 ? renderCourtScore(m2, i2) : '<div></div>'}
+        </div>
+      </div>`;
+  }
+
+  html += `
+    <div style="margin-top:12px; display:flex; justify-content:center;">
+      <button class="btn btn-ghost btn-sm" onclick="addRoundToFixture()" style="font-size:0.8rem; border:1px dashed var(--border); padding:8px 16px;">➕ Añadir otra ronda</button>
+    </div>
+    <div style="margin-top:24px; margin-bottom:24px;">
+      <button class="btn btn-green btn-full" onclick="promptFinishSession()" style="padding:16px; font-size:1.1rem; font-weight:900; box-shadow:0 6px 20px rgba(16,185,129,0.3);">✅ Guardar y Calcular Rating</button>
+      <button class="btn btn-ghost btn-full" onclick="confirmCancelSession()" style="margin-top:8px; color:var(--red);">Cancelar Jornada</button>
+    </div>`;
+
+  c.innerHTML = html;
+}
+
 function addMatchToFixture() {
   const s = state.session;
   if (!s) return;
@@ -647,6 +929,24 @@ function addMatchToFixture() {
   CACHE.set(CK.SESSION, s);
   renderPage();
   showToast('🎾 Nuevo partido añadido al tablero');
+}
+
+function addRoundToFixture() {
+  const s = state.session;
+  if (!s || s.courts !== 2) return;
+  const stats = computeGlobalStats();
+  const rankings = stats.ranking.reduce((acc, r) => { acc[r.id] = r; return acc; }, {});
+
+  const round = generateRoundDoubleCourt(s.attendees, s.fixture, rankings, s.fixture.length / 2);
+  round.court1.matchIndex = s.fixture.length + 1;
+  round.court1.score1 = 0; round.court1.score2 = 0; round.court1.skipped = false;
+  round.court2.matchIndex = s.fixture.length + 2;
+  round.court2.score1 = 0; round.court2.score2 = 0; round.court2.skipped = false;
+
+  s.fixture.push(round.court1, round.court2);
+  CACHE.set(CK.SESSION, s);
+  renderPage();
+  showToast('🎾🎾 Nueva ronda añadida');
 }
 
 function updateFixtureScore(idx, team, val) {

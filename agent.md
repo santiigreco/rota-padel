@@ -17,7 +17,8 @@ let state = {
   currentTab: 'play', // Pestaña actual: 'play' | 'history' | 'players' | 'stats'
   players: [],        // Arreglo de jugadores: { id, name, color }
   history: [],        // Arreglo de jornadas pasadas: { id, date, gamesFormat, attendees, matches }
-  session: null,      // Jornada activa: { id, date, attendees, gamesFormat, matches, currentMatch, matchIndex, finished }
+  session: null,      // Jornada activa: { id, date, attendees, gamesFormat, courts, matches, currentMatch, matchIndex, fixture, finished }
+                      //   courts: 1 (default) | 2 (modo 2 canchas, activado auto con >=8 jugadores)
   syncStatus: 'idle'  // Estado de sincronización: 'idle' | 'syncing' | 'error' | 'offline'
 };
 ```
@@ -112,11 +113,23 @@ La función `openPlayerProfile(playerId)` abre un modal que muestra:
 ### 1. Setup sin Configuración
 El flujo de crear una jornada ("Nueva Jornada") salta cualquier pregunta sobre "Games a jugar" o "Cantidad de partidos". Simplemente seleccionás quiénes asisten y el sistema propone un fixture de **10 partidos fijos por defecto**.
 
-### 2. Algoritmo Inteligente de Cruces (`generateNextMatch`)
-El sistema genera combinaciones posibles y penaliza según:
+### 2. Algoritmo Inteligente de Cruces (`generateNextMatch` / `generateRoundDoubleCourt`)
+
+El sistema soporta dos modos:
+
+**Modo 1 cancha** (< 8 jugadores): `generateNextMatch` genera combinaciones posibles y penaliza según:
 - **Equidad de Juego:** Si alguien juega más que el resto (penalización altísima, `1000 pts`).
 - **Rotación:** Penaliza repetir compañero (`40 pts`) y repetir rival (`15 pts`).
 - **Nivelación por ELO:** Se incorpora el *Método Nuco Flocco* calculando la diferencia de μ entre ambos equipos (`|μ_A + μ_B - (μ_C + μ_D)| * 5`). Esto hace que, a igualdad de rotación, la app **siempre elija el cruce más parejo**.
+
+**Modo 2 canchas** (≥ 8 jugadores, activado automáticamente): `generateRoundDoubleCourt` genera **rondas** con 2 partidos simultáneos y penaliza:
+- **Equidad de Juego:** `1000 pts` por asimetría grave de partidos jugados.
+- **Repetición de compañero en la misma cancha:** `50 pts`.
+- **Mismo grupo de 4 compartiendo cancha:** `30 pts`.
+- **Desbalance ELO entre canchas:** `|muC1 - muC2| * 3`.
+- **Desbalance ELO dentro de cada cancha:** `|muT1 - muT2| * 5`.
+
+Generación por defecto: **4 rondas = 8 partidos**. Se pueden agregar más rondas durante la sesión con "Añadir otra ronda". El campo `courts` en `state.session` indica el modo (1 o 2). **No se persiste en la DB** (solo en memoria/localStorage).
 
 ### 3. Resultados Libres y Descartes
 No hay límite de games. Los usuarios ingresan el resultado de cada partido mediante botones táctiles rápidos (`-` / `+`). Al finalizar la jornada, el sistema **descarta y borra automáticamente los partidos que quedaron 0-0** o no se jugaron.
@@ -130,4 +143,4 @@ Al terminar la jornada, se muestra el MVP ("Batacazo del día") calculado por Ev
 3. **Vanilla Pura**: No agregues librerías externas ni utilices JSX. Los componentes se renderizan mediante Template Literals (`` `...` ``).
 
 ---
-*Última actualización: 14 de junio 2026 — Fix ELO cascade + cálculo por jornada + panel de transparencia*
+*Última actualización: 14 de junio 2026 — Fix ELO cascade + cálculo por jornada + panel de transparencia + Modo 2 Canchas*
