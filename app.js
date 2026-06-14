@@ -1340,10 +1340,16 @@ Cada jugador se modela como:
   <strong>Habilidad ~ N(μ, σ²)</strong>
 
   μ = habilidad estimada (inicia en 25)
-  σ = incertidumbre (inicia en 8.33)
+  σ = incertidumbre — se deriva de tus propios partidos:
 
-  A más partidos → σ baja (más confianza)
-  σ nunca llega a 0 gracias al factor τ
+  <strong>σ(n) = √(σ₀² / (n+1) + τ²)</strong>
+
+  n=0  → σ ≈ 8.33 (nuevo, baja confianza)
+  n=10 → σ ≈ 2.56 (más estable)
+  n→∞  → σ → τ = 0.50 (piso mínimo)
+
+  Cada jugador tiene su σ independiente.
+  Editar partidos ajenos NO afecta tu σ.
           </div>
         </div>
 
@@ -1352,8 +1358,9 @@ Cada jugador se modela como:
           <div style="background:var(--bg-input); padding:12px; border-radius:var(--radius-sm); font-family:monospace; font-size:0.78rem; line-height:1.8; margin-bottom:8px;">
 Para un partido Equipo A vs Equipo B:
 
-  μ_equipo = μ_jugador1 + μ_jugador2
-  σ²_equipo = σ²_jugador1 + σ²_jugador2
+  σ_jugador = σ(partidos_propios)  ← aislado
+  μ_equipo = μ_j1 + μ_j2
+  σ²_equipo = σ²_j1 + σ²_j2
 
   c = √(σ²_A + σ²_B + 2β²)
   t = (μ_ganador − μ_perdedor) / c
@@ -1362,9 +1369,8 @@ Para un partido Equipo A vs Equipo B:
   v(t) = φ(t) / Φ(t)    ← ratio Mills
   w(t) = v(t) × (v(t) + t)
 
-  <strong>Update de cada jugador:</strong>
+  <strong>Solo se actualiza μ (no σ):</strong>
   Δμ = ±(σ² / c) × v(t) × M
-  σ²_new = σ² × (1 − (σ²/c²) × w(t))
           </div>
         </div>
 
@@ -1624,11 +1630,18 @@ function tsScaleToDisplay(mu) {
   return (mu / 50) * 1000 + 500;
 }
 
+function sigmaFromMatches(n) {
+  // σ se deriva SOLO de los partidos jugados por ESE jugador.
+  // Esto evita el efecto cascada: editar un partido ajeno no cambia tu σ.
+  // Con n=0: σ ≈ SIGMA0. Con n→∞: σ converge a TAU.
+  return Math.sqrt((TS.SIGMA0 * TS.SIGMA0) / (n + 1) + TS.TAU * TS.TAU);
+}
+
 function computeGlobalStats() {
   const ps = {}, pairs = {};
 
   state.players.forEach(p => {
-    ps[p.id] = { wins: 0, matches: 0, games: 0, sessions: 0, mu: TS.MU0, sigma: TS.SIGMA0, eloHistory: [{ date: 'Inicio', elo: tsScaleToDisplay(TS.MU0) }] };
+    ps[p.id] = { wins: 0, matches: 0, games: 0, sessions: 0, mu: TS.MU0, eloHistory: [{ date: 'Inicio', elo: tsScaleToDisplay(TS.MU0) }] };
   });
 
   const history = getActiveHistory().sort((a, b) => new Date(a.date) - new Date(b.date));
@@ -1647,9 +1660,20 @@ function computeGlobalStats() {
       att = [...attSet];
     }
     for (const id of att) {
-      if (!ps[id]) ps[id] = { wins: 0, matches: 0, games: 0, sessions: 0, mu: TS.MU0, sigma: TS.SIGMA0, eloHistory: [{ date: 'Inicio', elo: tsScaleToDisplay(TS.MU0) }] };
+      if (!ps[id]) ps[id] = { wins: 0, matches: 0, games: 0, sessions: 0, mu: TS.MU0, eloHistory: [{ date: 'Inicio', elo: tsScaleToDisplay(TS.MU0) }] };
       ps[id].sessions++;
     }
+    // ── Snapshot de μ y n_partidos al INICIO de la jornada ──────────────────
+    // Todos los partidos de esta jornada calculan su delta con los mismos valores
+    // de arranque. Así el orden de los partidos no importa y editar un partido
+    // solo afecta a los jugadores de ESE partido.
+    const muSnap = {}, matchSnap = {};
+    Object.keys(ps).forEach(id => { muSnap[id] = ps[id].mu; matchSnap[id] = ps[id].matches; });
+
+    // Acumulador de deltas de μ para esta jornada (se aplican al final)
+    const deltaMu = {};
+    Object.keys(ps).forEach(id => { deltaMu[id] = 0; });
+
     const matches = [...session.matches].sort((a, b) => a.matchIndex - b.matchIndex);
 
     for (const m of matches) {
@@ -1659,58 +1683,51 @@ function computeGlobalStats() {
       const t2 = m.team2.filter(id => ps[id]);
       if (t1.length === 0 || t2.length === 0) continue;
 
-      // Agregar dynamic factor τ (previene que σ converja a 0)
-      for (const id of [...t1, ...t2]) {
-        ps[id].sigma = Math.sqrt(ps[id].sigma * ps[id].sigma + TS.TAU * TS.TAU);
-      }
+      // σ derivado del snapshot de partidos al inicio de la jornada
+      const sigFor = id => sigmaFromMatches(matchSnap[id] !== undefined ? matchSnap[id] : ps[id].matches);
 
-      // Calcular μ y σ² de cada equipo (suma)
-      const muTeam1 = t1.reduce((s, id) => s + ps[id].mu, 0);
-      const muTeam2 = t2.reduce((s, id) => s + ps[id].mu, 0);
-      const sigSqTeam1 = t1.reduce((s, id) => s + ps[id].sigma * ps[id].sigma, 0);
-      const sigSqTeam2 = t2.reduce((s, id) => s + ps[id].sigma * ps[id].sigma, 0);
+      // μ de equipo usando valores al INICIO de la jornada (no los acumulados)
+      const muTeam1 = t1.reduce((s, id) => s + (muSnap[id] !== undefined ? muSnap[id] : ps[id].mu), 0);
+      const muTeam2 = t2.reduce((s, id) => s + (muSnap[id] !== undefined ? muSnap[id] : ps[id].mu), 0);
+      const sigSqTeam1 = t1.reduce((s, id) => { const sg = sigFor(id); return s + sg * sg; }, 0);
+      const sigSqTeam2 = t2.reduce((s, id) => { const sg = sigFor(id); return s + sg * sg; }, 0);
 
       // c² = σ²_team1 + σ²_team2 + 2β²
       const cSq = sigSqTeam1 + sigSqTeam2 + 2 * TS.BETA * TS.BETA;
       const c = Math.sqrt(cSq);
 
-      // Determinar ganador/perdedor y calcular t = (μ_winner - μ_loser) / c
       const t1w = m.score1 > m.score2, t2w = m.score2 > m.score1;
       const isDraw = m.score1 === m.score2;
 
-      // Factor de margen de victoria: escala el update por la diferencia de games
+      // Factor de margen de victoria
       const scoreDiff = Math.abs(m.score1 - m.score2);
-      const marginFactor = 1 + 0.15 * Math.log(scoreDiff + 1); // 1.0 (empate) a ~1.29 (diff=6)
+      const marginFactor = 1 + 0.15 * Math.log(scoreDiff + 1);
 
       if (!isDraw) {
-        // Victoria/Derrota
         const muW = t1w ? muTeam1 : muTeam2;
         const muL = t1w ? muTeam2 : muTeam1;
-        const t = (muW - muL) / c;
+        const tVal = (muW - muL) / c;
 
-        const v = tsVFunction(t);
-        const w = tsWFunction(t);
+        const v = tsVFunction(tVal);
 
-        // Actualizar ganadores
         const winners = t1w ? t1 : t2;
-        const losers = t1w ? t2 : t1;
+        const losers  = t1w ? t2 : t1;
 
+        // Acumular deltas — NO modificar ps[id].mu todavía
         for (const id of winners) {
-          const sigSq = ps[id].sigma * ps[id].sigma;
-          ps[id].mu += (sigSq / c) * v * marginFactor;
-          const newSigSq = sigSq * (1 - (sigSq / cSq) * w);
-          ps[id].sigma = Math.sqrt(Math.max(newSigSq, 0.01));
+          const sigSq = sigFor(id) * sigFor(id);
+          if (deltaMu[id] === undefined) deltaMu[id] = 0;
+          deltaMu[id] += (sigSq / c) * v * marginFactor;
         }
-
         for (const id of losers) {
-          const sigSq = ps[id].sigma * ps[id].sigma;
-          ps[id].mu -= (sigSq / c) * v * marginFactor;
-          const newSigSq = sigSq * (1 - (sigSq / cSq) * w);
-          ps[id].sigma = Math.sqrt(Math.max(newSigSq, 0.01));
+          const sigSq = sigFor(id) * sigFor(id);
+          if (deltaMu[id] === undefined) deltaMu[id] = 0;
+          deltaMu[id] -= (sigSq / c) * v * marginFactor;
         }
       }
       // En empate no actualizamos (en pádel prácticamente no ocurre)
 
+      // Stats de partidos/victorias/games (se acumulan durante la jornada, OK)
       for (const id of m.team1) {
         if (ps[id]) { ps[id].matches++; if (t1w) ps[id].wins++; ps[id].games += m.score1; }
       }
@@ -1726,9 +1743,11 @@ function computeGlobalStats() {
       proc(m.team1, t1w); proc(m.team2, t2w);
     }
 
-    // Al final de la jornada, guardar el rating resultante para TODOS los jugadores,
-    // incluso si estuvieron ausentes, para que su linea avance recta en el grafico.
+    // ── Aplicar todos los Δμ de la jornada de una sola vez ───────────────────
+    // Solo aquí se actualiza ps[id].mu. Cada partido contribuyó con su delta
+    // calculado desde el mismo punto de partida (muSnap), sin interferencias.
     Object.keys(ps).forEach(id => {
+      ps[id].mu = (muSnap[id] !== undefined ? muSnap[id] : ps[id].mu) + (deltaMu[id] || 0);
       ps[id].eloHistory.push({ date: session.date, elo: tsScaleToDisplay(ps[id].mu) });
     });
   }
@@ -1745,12 +1764,14 @@ function computeGlobalStats() {
     const k = s.sessions;
     const N = totalSessions > 0 ? totalSessions : 1;
     const attendanceRatio = k / N; // 0..1
-    const muAdjusted = s.mu + (attendanceRatio - 1) * s.sigma;
+    // σ siempre se deriva de partidos propios (no acumulado cross-player)
+    const finalSigma = sigmaFromMatches(s.matches);
+    const muAdjusted = s.mu + (attendanceRatio - 1) * finalSigma;
     const elo = tsScaleToDisplay(muAdjusted);
     const eloPure = tsScaleToDisplay(s.mu); // Sin penalización, para info
     const penalty = Math.round(elo - eloPure); // Negativo si falta asistencia
 
-    return { id, name: p?.name || '(Eliminado)', color: p?.color || '#888', possible, eloHistory: s.eloHistory || [], elo, eloPure, mu: s.mu, sigma: s.sigma, penalty, attendanceRatio, ...s };
+    return { id, name: p?.name || '(Eliminado)', color: p?.color || '#888', possible, eloHistory: s.eloHistory || [], elo, eloPure, mu: s.mu, sigma: finalSigma, penalty, attendanceRatio, ...s };
   };
 
   return {
