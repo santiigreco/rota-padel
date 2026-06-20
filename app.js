@@ -542,28 +542,50 @@ function previewFixtureTripleCourt(attendees) {
     </div>
   `);
 
-  // Dar tiempo al browser para renderizar el spinner antes del calculo pesado
   setTimeout(() => {
-    const INITIAL_ROUNDS = 4;
+    // 6 rondas: shuffle(1) rotate(2) shuffle(3) rotate(4) shuffle(5) rotate(6)
+    const INITIAL_ROUNDS = 6;
     const sh = [...attendees].sort(() => Math.random() - 0.5);
     const stats = computeGlobalStats();
     const rankings = stats.ranking.reduce((acc, r) => { acc[r.id] = r; return acc; }, {});
 
     let fixture = [];
+    const courtGroupsHistory = []; // grupos activos por cada ronda de shuffle
+
     for (let r = 0; r < INITIAL_ROUNDS; r++) {
-      const round = generateRoundTripleCourt(sh, fixture, rankings, r);
+      const isShuffleRound = (r % 2 === 0); // rondas 0,2,4 = shuffle; 1,3,5 = rotate
+
+      let round;
+      if (isShuffleRound) {
+        round = generateRoundTripleCourt(sh, fixture, rankings, r);
+        // Guardar los 3 grupos de 4 para la siguiente ronda de rotación
+        courtGroupsHistory.push([
+          [...round.court1.team1, ...round.court1.team2],
+          [...round.court2.team1, ...round.court2.team2],
+          [...round.court3.team1, ...round.court3.team2],
+        ]);
+      } else {
+        // Mismos grupos, rotamos parejas dentro de cada cancha
+        const groups = courtGroupsHistory[courtGroupsHistory.length - 1];
+        round = generateRotateRound(groups, fixture, rankings);
+      }
+
       round.court1.matchIndex = fixture.length + 1;
       round.court1.score1 = 0; round.court1.score2 = 0; round.court1.skipped = false;
+      round.court1.roundType = isShuffleRound ? 'shuffle' : 'rotate';
       round.court2.matchIndex = fixture.length + 2;
       round.court2.score1 = 0; round.court2.score2 = 0; round.court2.skipped = false;
+      round.court2.roundType = isShuffleRound ? 'shuffle' : 'rotate';
       round.court3.matchIndex = fixture.length + 3;
       round.court3.score1 = 0; round.court3.score2 = 0; round.court3.skipped = false;
+      round.court3.roundType = isShuffleRound ? 'shuffle' : 'rotate';
       fixture.push(round.court1, round.court2, round.court3);
     }
 
     window._tempFixture = fixture;
     window._tempAtt = sh;
     window._tempCourts = 3;
+    window._tempCourtGroups = courtGroupsHistory;
 
     renderFixturePreviewTripleCourt();
   }, 50);
@@ -686,14 +708,50 @@ function generateRoundTripleCourt(attendees, played, rankings, roundIdx) {
   return { court1: bestC1, court2: bestC2, court3: bestC3 };
 }
 
+/**
+ * Genera una ronda de ROTACIÓN: mismos 3 grupos de 4, pero elige el split
+ * de parejas óptimo (por ELO balance y menor repetición) dentro de cada grupo.
+ * Cada cancha puede empezar de forma independiente sin esperar a las demás.
+ */
+function generateRotateRound(courtGroups, played, rankings) {
+  const partC = {};
+  for (const m of played) {
+    for (const t of [m.team1, m.team2]) {
+      const k = [...t].sort().join('_');
+      partC[k] = (partC[k] || 0) + 1;
+    }
+  }
+
+  const courts = courtGroups.map((group, i) => {
+    let bestScore = Infinity;
+    let bestSplit = null;
+    for (const [t1, t2] of getTeamSplits(group)) {
+      const partRep = (partC[[...t1].sort().join('_')] || 0) * 50 + (partC[[...t2].sort().join('_')] || 0) * 50;
+      const muT1 = t1.reduce((s, id) => s + (rankings[id]?.mu || 25), 0);
+      const muT2 = t2.reduce((s, id) => s + (rankings[id]?.mu || 25), 0);
+      const eloBal = Math.abs(muT1 - muT2) * 5;
+      const score = partRep + eloBal;
+      if (score < bestScore) {
+        bestScore = score;
+        bestSplit = { id: uid(), team1: t1, team2: t2, court: i + 1 };
+      }
+    }
+    return bestSplit;
+  });
+
+  return { court1: courts[0], court2: courts[1], court3: courts[2] };
+}
+
 function renderFixturePreviewTripleCourt() {
   const fixture = window._tempFixture;
   const rounds = [];
   for (let i = 0; i < fixture.length; i += 3) {
-    rounds.push({ c1: fixture[i], c2: fixture[i + 1], c3: fixture[i + 2], roundNum: Math.floor(i / 3) + 1 });
+    const roundIdx = Math.floor(i / 3);
+    const isShuffleRound = (roundIdx % 2 === 0);
+    rounds.push({ c1: fixture[i], c2: fixture[i + 1], c3: fixture[i + 2], roundNum: roundIdx + 1, isShuffleRound });
   }
 
-  const list = rounds.map(({ c1, c2, c3, roundNum }) => {
+  const list = rounds.map(({ c1, c2, c3, roundNum, isShuffleRound }) => {
     const renderCourtCard = (m, courtLabel, mIdx) => {
       if (!m) return '';
       const t1p1 = playerById(m.team1[0])?.name || '?', t1p2 = playerById(m.team1[1])?.name || '?';
@@ -715,10 +773,13 @@ function renderFixturePreviewTripleCourt() {
     const idxC1 = fixture.indexOf(c1);
     const idxC2 = fixture.indexOf(c2);
     const idxC3 = fixture.indexOf(c3);
+    const roundLabel = isShuffleRound
+      ? `RONDA ${roundNum} <span style="color:var(--accent)">🔀 Nuevas Canchas</span>`
+      : `RONDA ${roundNum} <span style="color:var(--green)">🔁 Rotación</span>`;
 
     return `
-      <div class="card" style="padding:12px; margin-bottom:10px;">
-        <div style="font-size:0.75rem; color:var(--text-muted); font-weight:700; margin-bottom:10px; text-align:center; letter-spacing:0.5px;">RONDA ${roundNum}</div>
+      <div class="card" style="padding:12px; margin-bottom:10px; border-left:3px solid ${isShuffleRound ? 'var(--accent)' : 'var(--green)'}">
+        <div style="font-size:0.72rem; font-weight:800; color:var(--text-muted); letter-spacing:0.5px; text-align:center; margin-bottom:10px;">${roundLabel}</div>
         <div style="display:flex; gap:6px;">
           ${renderCourtCard(c1, '🎾 C1', idxC1)}
           ${renderCourtCard(c2, '🎾 C2', idxC2)}
@@ -730,8 +791,11 @@ function renderFixturePreviewTripleCourt() {
   openModal(`
     <div class="modal-handle"></div>
     <p class="modal-title">📋 Fixture — 3 Canchas</p>
-    <p style="font-size:0.78rem; color:var(--text-muted); margin-bottom:12px;">3 partidos simultáneos por ronda · ${rounds.length} rondas · ${fixture.length} partidos</p>
-    <div style="max-height: 55dvh; overflow-y:auto; margin-bottom:16px;">
+    <div style="display:flex; gap:8px; margin-bottom:12px; font-size:0.72rem; color:var(--text-muted);">
+      <span style="color:var(--accent)">🔀</span> Shuffle = nuevos grupos   
+      <span style="color:var(--green)">🔁</span> Rotación = mismos 4, cambia pareja
+    </div>
+    <div style="max-height: 52dvh; overflow-y:auto; margin-bottom:16px;">
       ${list}
     </div>
     <div class="gap-8">
@@ -986,8 +1050,10 @@ function launchSession() {
     id: uid(),
     date: new Date().toISOString(),
     attendees,
-    gamesFormat: 0, // Ya no se usa
+    gamesFormat: 0,
     courts,         // 1, 2 o 3 canchas
+    // Para courts===3: historial de grupos por ronda de shuffle (para generar rotaciones)
+    courtGroupsHistory: courts === 3 ? (window._tempCourtGroups || []) : [],
     matches: [],
     fixture: fixture,
     currentMatch: fixture[0],
@@ -1209,11 +1275,15 @@ function renderActiveSessionTripleCourt(c) {
     };
 
     const roundPlayed = (m1 && (m1.score1 > 0 || m1.score2 > 0)) || (m2 && (m2.score1 > 0 || m2.score2 > 0)) || (m3 && (m3.score1 > 0 || m3.score2 > 0));
-    const roundBorderColor = roundPlayed ? 'var(--green)' : 'var(--border)';
+    const isShuffleRound = m1.roundType !== 'rotate';
+    const roundBorderColor = roundPlayed ? 'var(--green)' : (isShuffleRound ? 'var(--accent)' : 'var(--cyan)');
+    const roundTypeLabel = isShuffleRound
+      ? `<span style="color:var(--accent); font-size:0.65rem; margin-left:6px;">🔀 Shuffle</span>`
+      : `<span style="color:var(--cyan); font-size:0.65rem; margin-left:6px;">🔁 Rotación</span>`;
 
     html += `
       <div class="card" style="padding:14px; margin-bottom:12px; border-left:3px solid ${roundBorderColor}; transition: border-color 0.3s;">
-        <div style="font-size:0.72rem; font-weight:800; color:var(--text-muted); letter-spacing:1px; text-align:center; margin-bottom:12px;">— RONDA ${r + 1} —</div>
+        <div style="font-size:0.72rem; font-weight:800; color:var(--text-muted); letter-spacing:1px; text-align:center; margin-bottom:12px;">— RONDA ${r + 1} —${roundTypeLabel}</div>
         <div style="display:grid; grid-template-columns:1fr 1px 1fr 1px 1fr; gap:10px; align-items:start;">
           ${renderCourtScore(m1, i1, 1)}
           <div style="background:var(--border); height:100%;"></div>
@@ -1258,17 +1328,40 @@ function addRoundToFixture() {
   const rankings = stats.ranking.reduce((acc, r) => { acc[r.id] = r; return acc; }, {});
 
   if (s.courts === 3) {
-    const round = generateRoundTripleCourt(s.attendees, s.fixture, rankings, Math.floor(s.fixture.length / 3));
+    const currentRoundCount = Math.floor(s.fixture.length / 3);
+    const isShuffleRound = (currentRoundCount % 2 === 0); // proxima ronda es shuffle o rotate?
+    let round;
+
+    if (isShuffleRound) {
+      round = generateRoundTripleCourt(s.attendees, s.fixture, rankings, currentRoundCount);
+      // Guardar los grupos del shuffle para la siguiente rotación
+      s.courtGroupsHistory = s.courtGroupsHistory || [];
+      s.courtGroupsHistory.push([
+        [...round.court1.team1, ...round.court1.team2],
+        [...round.court2.team1, ...round.court2.team2],
+        [...round.court3.team1, ...round.court3.team2],
+      ]);
+    } else {
+      const groups = (s.courtGroupsHistory || [])[s.courtGroupsHistory.length - 1];
+      if (!groups) {
+        // Fallback: si por alguna razón no hay grupos guardados, hacemos shuffle
+        round = generateRoundTripleCourt(s.attendees, s.fixture, rankings, currentRoundCount);
+      } else {
+        round = generateRotateRound(groups, s.fixture, rankings);
+      }
+    }
+
+    const roundType = isShuffleRound ? 'shuffle' : 'rotate';
     round.court1.matchIndex = s.fixture.length + 1;
-    round.court1.score1 = 0; round.court1.score2 = 0; round.court1.skipped = false;
+    round.court1.score1 = 0; round.court1.score2 = 0; round.court1.skipped = false; round.court1.roundType = roundType;
     round.court2.matchIndex = s.fixture.length + 2;
-    round.court2.score1 = 0; round.court2.score2 = 0; round.court2.skipped = false;
+    round.court2.score1 = 0; round.court2.score2 = 0; round.court2.skipped = false; round.court2.roundType = roundType;
     round.court3.matchIndex = s.fixture.length + 3;
-    round.court3.score1 = 0; round.court3.score2 = 0; round.court3.skipped = false;
+    round.court3.score1 = 0; round.court3.score2 = 0; round.court3.skipped = false; round.court3.roundType = roundType;
     s.fixture.push(round.court1, round.court2, round.court3);
     CACHE.set(CK.SESSION, s);
     renderPage();
-    showToast('🎾🎾🎾 Nueva ronda añadida');
+    showToast(isShuffleRound ? '🔀 Nueva ronda — Nuevas Canchas' : '🔁 Nueva ronda — Rotación de parejas');
   } else {
     const round = generateRoundDoubleCourt(s.attendees, s.fixture, rankings, s.fixture.length / 2);
     round.court1.matchIndex = s.fixture.length + 1;
