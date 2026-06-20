@@ -757,15 +757,15 @@ function renderFixturePreviewTripleCourt() {
       const t1p1 = playerById(m.team1[0])?.name || '?', t1p2 = playerById(m.team1[1])?.name || '?';
       const t2p1 = playerById(m.team2[0])?.name || '?', t2p2 = playerById(m.team2[1])?.name || '?';
       return `
-        <div style="flex:1; background:var(--bg-input); border-radius:var(--radius-sm); padding:10px; min-width:0;">
-          <div style="font-size:0.68rem; color:var(--accent); font-weight:800; margin-bottom:8px; letter-spacing:0.3px;">${courtLabel}</div>
-          <div style="display:flex; align-items:center; gap:4px; font-size:0.75rem; font-weight:600;">
-            <div style="flex:1; text-align:right; line-height:1.4; word-break:break-word;">${escHtml(t1p1)}<br>${escHtml(t1p2)}</div>
-            <div style="color:var(--text-muted); font-size:0.65rem; flex-shrink:0;">vs</div>
-            <div style="flex:1; text-align:left; line-height:1.4; word-break:break-word;">${escHtml(t2p1)}<br>${escHtml(t2p2)}</div>
+        <div style="padding:6px 0;">
+          <div style="font-size:0.72rem; color:var(--accent); font-weight:800; margin-bottom:8px;">${courtLabel}</div>
+          <div style="display:flex; align-items:center; justify-content:space-between; gap:8px; font-size:0.85rem; font-weight:600;">
+            <div style="flex:1; text-align:right; line-height:1.4;">${escHtml(t1p1)}<br>${escHtml(t1p2)}</div>
+            <div style="color:var(--text-muted); font-size:0.75rem; flex-shrink:0;">vs</div>
+            <div style="flex:1; text-align:left; line-height:1.4;">${escHtml(t2p1)}<br>${escHtml(t2p2)}</div>
           </div>
-          <div style="display:flex; justify-content:center; margin-top:8px;">
-            <button class="btn btn-ghost btn-sm" onclick="shuffleMatchTC(${mIdx})" style="font-size:0.6rem; padding:3px 6px;">🔄</button>
+          <div style="display:flex; justify-content:center; margin-top:6px;">
+            <button class="btn btn-ghost btn-sm" onclick="shuffleMatchTC(${mIdx})" style="font-size:0.65rem; padding:3px 8px;">🔄 Cambiar parejas</button>
           </div>
         </div>`;
     };
@@ -780,10 +780,10 @@ function renderFixturePreviewTripleCourt() {
     return `
       <div class="card" style="padding:12px; margin-bottom:10px; border-left:3px solid ${isShuffleRound ? 'var(--accent)' : 'var(--green)'}">
         <div style="font-size:0.72rem; font-weight:800; color:var(--text-muted); letter-spacing:0.5px; text-align:center; margin-bottom:10px;">${roundLabel}</div>
-        <div style="display:flex; gap:6px;">
+        <div style="display:flex; flex-direction:column; gap:0;">
           ${renderCourtCard(c1, '🎾 C1', idxC1)}
-          ${renderCourtCard(c2, '🎾 C2', idxC2)}
-          ${renderCourtCard(c3, '🎾 C3', idxC3)}
+          ${c2 ? `<div style="height:1px; background:var(--border); margin:8px 0;"></div>${renderCourtCard(c2, '🎾 C2', idxC2)}` : ''}
+          ${c3 ? `<div style="height:1px; background:var(--border); margin:8px 0;"></div>${renderCourtCard(c3, '🎾 C3', idxC3)}` : ''}
         </div>
       </div>`;
   }).join('');
@@ -1284,12 +1284,10 @@ function renderActiveSessionTripleCourt(c) {
     html += `
       <div class="card" style="padding:14px; margin-bottom:12px; border-left:3px solid ${roundBorderColor}; transition: border-color 0.3s;">
         <div style="font-size:0.72rem; font-weight:800; color:var(--text-muted); letter-spacing:1px; text-align:center; margin-bottom:12px;">— RONDA ${r + 1} —${roundTypeLabel}</div>
-        <div style="display:grid; grid-template-columns:1fr 1px 1fr 1px 1fr; gap:10px; align-items:start;">
+        <div style="display:flex; flex-direction:column; gap:0;">
           ${renderCourtScore(m1, i1, 1)}
-          <div style="background:var(--border); height:100%;"></div>
-          ${m2 ? renderCourtScore(m2, i2, 2) : '<div></div>'}
-          <div style="background:var(--border); height:100%;"></div>
-          ${m3 ? renderCourtScore(m3, i3, 3) : '<div></div>'}
+          ${m2 ? `<div style="height:1px; background:var(--border); margin:10px 0;"></div>${renderCourtScore(m2, i2, 2)}` : ''}
+          ${m3 ? `<div style="height:1px; background:var(--border); margin:10px 0;"></div>${renderCourtScore(m3, i3, 3)}` : ''}
         </div>
       </div>`;
   }
