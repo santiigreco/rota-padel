@@ -532,29 +532,41 @@ function previewFixtureDoubleCourt(attendees) {
 // ─── MODO 3 CANCHAS ────────────────────────────────────────────────────────
 
 function previewFixtureTripleCourt(attendees) {
-  // 4 rondas iniciales = 12 partidos (3 por ronda)
-  const INITIAL_ROUNDS = 4;
-  const sh = [...attendees].sort(() => Math.random() - 0.5);
-  const stats = computeGlobalStats();
-  const rankings = stats.ranking.reduce((acc, r) => { acc[r.id] = r; return acc; }, {});
+  // Mostrar modal con loading mientras genera
+  openModal(`
+    <div class="modal-handle"></div>
+    <p class="modal-title">🎾🎾🎾 Generando Fixture…</p>
+    <div style="display:flex; flex-direction:column; align-items:center; gap:16px; padding:24px 0;">
+      <div class="spinner-lg"></div>
+      <p style="font-size:0.85rem; color:var(--text-secondary);">Optimizando cruces para 3 canchas…</p>
+    </div>
+  `);
 
-  let fixture = [];
-  for (let r = 0; r < INITIAL_ROUNDS; r++) {
-    const round = generateRoundTripleCourt(sh, fixture, rankings, r);
-    round.court1.matchIndex = fixture.length + 1;
-    round.court1.score1 = 0; round.court1.score2 = 0; round.court1.skipped = false;
-    round.court2.matchIndex = fixture.length + 2;
-    round.court2.score1 = 0; round.court2.score2 = 0; round.court2.skipped = false;
-    round.court3.matchIndex = fixture.length + 3;
-    round.court3.score1 = 0; round.court3.score2 = 0; round.court3.skipped = false;
-    fixture.push(round.court1, round.court2, round.court3);
-  }
+  // Dar tiempo al browser para renderizar el spinner antes del calculo pesado
+  setTimeout(() => {
+    const INITIAL_ROUNDS = 4;
+    const sh = [...attendees].sort(() => Math.random() - 0.5);
+    const stats = computeGlobalStats();
+    const rankings = stats.ranking.reduce((acc, r) => { acc[r.id] = r; return acc; }, {});
 
-  window._tempFixture = fixture;
-  window._tempAtt = sh;
-  window._tempCourts = 3;
+    let fixture = [];
+    for (let r = 0; r < INITIAL_ROUNDS; r++) {
+      const round = generateRoundTripleCourt(sh, fixture, rankings, r);
+      round.court1.matchIndex = fixture.length + 1;
+      round.court1.score1 = 0; round.court1.score2 = 0; round.court1.skipped = false;
+      round.court2.matchIndex = fixture.length + 2;
+      round.court2.score1 = 0; round.court2.score2 = 0; round.court2.skipped = false;
+      round.court3.matchIndex = fixture.length + 3;
+      round.court3.score1 = 0; round.court3.score2 = 0; round.court3.skipped = false;
+      fixture.push(round.court1, round.court2, round.court3);
+    }
 
-  renderFixturePreviewTripleCourt();
+    window._tempFixture = fixture;
+    window._tempAtt = sh;
+    window._tempCourts = 3;
+
+    renderFixturePreviewTripleCourt();
+  }, 50);
 }
 
 /**
@@ -589,20 +601,24 @@ function generateRoundTripleCourt(attendees, played, rankings, roundIdx) {
     active = [...active].sort((a, b) => (pc[a] || 0) - (pc[b] || 0)).slice(0, 12);
   }
 
-  // Dividir 12 jugadores en 3 grupos de 4:
-  // Elegir grupo A (C(12,4)), luego grupo B de los 8 restantes (C(8,4)),
-  // grupo C son los últimos 4. Dividir por 6 por simetría.
-  const groupACombinations = combinations(active, 4);
+  // Muestreo aleatorio: shuffle los grupos para explorar diversas divisiones
+  // sin evaluar las 5775 divisiones exhaustivamente (~15x más rápido en móvil)
+  const MAX_SAMPLE_DIVISIONS = 300;
+  const shuffledActive = [...active].sort(() => Math.random() - 0.5);
+  const groupACombinations = combinations(shuffledActive, 4);
   const seenDivisions = new Set();
+  let sampledCount = 0;
 
   let bestScore = Infinity;
   let bestC1 = null, bestC2 = null, bestC3 = null;
 
   for (const groupA of groupACombinations) {
-    const rest8 = active.filter(id => !groupA.includes(id));
+    if (sampledCount >= MAX_SAMPLE_DIVISIONS) break;
+    const rest8 = shuffledActive.filter(id => !groupA.includes(id));
     const groupBCombinations = combinations(rest8, 4);
 
     for (const groupB of groupBCombinations) {
+      if (sampledCount >= MAX_SAMPLE_DIVISIONS) break;
       const groupC = rest8.filter(id => !groupB.includes(id));
 
       // Evitar evaluar la misma división (permutaciones de grupos)
@@ -613,6 +629,7 @@ function generateRoundTripleCourt(attendees, played, rankings, roundIdx) {
       ].sort().join('|');
       if (seenDivisions.has(divKey)) continue;
       seenDivisions.add(divKey);
+      sampledCount++;
 
       // Repetición de mismo grupo de 4 en una cancha
       const gAkey = [...groupA].sort().join('_');
