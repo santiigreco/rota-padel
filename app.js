@@ -1573,6 +1573,7 @@ function renderSessionEnd(c) {
     </div>`;
   }).join('');
 
+  const bestPairs = Object.values(pairs).sort((a, b) => b.wins - a.wins || b.games - a.games).slice(0, 2);
   const pairsHtml = bestPairs.length > 0 ? `<p class="section-title" style="margin-top:24px;margin-bottom:12px">👥 Mejores Parejas</p>` + bestPairs.map(pair => `<div class="pair-card" style="margin-bottom:8px; padding:12px;"><div style="font-size:0.9rem; font-weight:800; color:var(--text-primary); margin-bottom:6px;">${escHtml(pair.names)}</div><div style="display:flex; gap:16px; font-size:0.8rem; color:var(--text-secondary);"><div>Victorias: <strong style="color:var(--text-primary)">${pair.wins}</strong></div><div>Games ganados: <strong style="color:var(--text-primary)">${pair.games}</strong></div></div></div>`).join('') : '';
 
   c.innerHTML = `
