@@ -1448,9 +1448,10 @@ function saveUpcomingMatch() {
   if (selects.length !== 4) return;
 
   const vals = Array.from(selects).map(s => s.value);
-  const unique = new Set(vals);
-  if (unique.size !== 4) {
-    showToast('⚠️ No puedes repetir jugadores en el mismo partido');
+  // Solo verificamos que cada equipo tenga jugadores distintos entre sí
+  // (se permite repetir parejas entre distintos partidos de la jornada)
+  if (vals[0] === vals[1] || vals[2] === vals[3]) {
+    showToast('⚠️ Un mismo jugador no puede estar dos veces en el mismo equipo');
     return;
   }
 
@@ -2486,8 +2487,10 @@ function computeGlobalStats() {
     let possible = 0; for (const j of history) { if (new Date(j.date).getTime() >= createdAt) possible++; }
 
     // Penalización por asistencia: rating = μ + (k/N - 1) · σ
+    // N = jornadas posibles desde que el jugador apareció por primera vez
+    // (igual que el cálculo de % en la pestaña Asistencia)
     const k = s.sessions;
-    const N = totalSessions > 0 ? totalSessions : 1;
+    const N = possible > 0 ? possible : 1;
     const attendanceRatio = k / N; // 0..1
     // σ siempre se deriva de partidos propios (no acumulado cross-player)
     const finalSigma = sigmaFromMatches(s.matches);
