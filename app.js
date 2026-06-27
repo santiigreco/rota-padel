@@ -2482,13 +2482,21 @@ function computeGlobalStats() {
   const row = id => {
     const p = playerById(id);
     const s = ps[id] || { wins: 0, matches: 0, games: 0, sessions: 0, mu: TS.MU0, sigma: TS.SIGMA0, eloHistory: [] };
-    let createdAt = 0;
-    if (id && id.length > 5) { const ts = parseInt(id.slice(0, -5), 36); if (!isNaN(ts) && ts > 1600000000000) createdAt = ts - 86400000; }
-    let possible = 0; for (const j of history) { if (new Date(j.date).getTime() >= createdAt) possible++; }
+    // possible = jornadas del torneo desde la PRIMERA VEZ que el jugador asistió
+    // Esto es consistente con el % que muestra la pestaña Asistencia
+    let firstAttendance = null;
+    for (const j of history) {
+      const attended = (j.attendees && j.attendees.includes(id)) ||
+        j.matches.some(m => !m.skipped && (m.team1.includes(id) || m.team2.includes(id)));
+      if (attended) { firstAttendance = new Date(j.date).getTime(); break; }
+    }
+    let possible = 0;
+    if (firstAttendance !== null) {
+      for (const j of history) { if (new Date(j.date).getTime() >= firstAttendance) possible++; }
+    }
 
     // Penalización por asistencia: rating = μ + (k/N - 1) · σ
-    // N = jornadas posibles desde que el jugador apareció por primera vez
-    // (igual que el cálculo de % en la pestaña Asistencia)
+    // N = jornadas desde la primera aparición del jugador en el torneo
     const k = s.sessions;
     const N = possible > 0 ? possible : 1;
     const attendanceRatio = k / N; // 0..1
